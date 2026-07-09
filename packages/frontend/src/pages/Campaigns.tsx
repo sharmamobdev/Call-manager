@@ -45,6 +45,12 @@ export default function Campaigns() {
     enabled: !!editCampaign,
   });
 
+  const { data: buyersData } = useQuery({
+    queryKey: ["buyers"],
+    queryFn: () => api.get("/customer/buyers").then((r) => r.data),
+    enabled: !!editCampaign,
+  });
+
   const createMutation = useMutation({
     mutationFn: () => api.post("/customer/campaigns", form),
     onSuccess: () => {
@@ -78,10 +84,26 @@ export default function Campaigns() {
     },
   });
 
+  const linkBuyerMutation = useMutation({
+    mutationFn: (buyerId: string) => api.post("/customer/campaign-buyers", { campaign_id: editCampaign.id, buyer_id: buyerId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaign.id] });
+    },
+  });
+
+  const unlinkBuyerMutation = useMutation({
+    mutationFn: (linkId: string) => api.delete(`/customer/campaign-buyers/${linkId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaign.id] });
+    },
+  });
+
   const campaigns = data?.campaigns || [];
   const numbers = numbersData?.numbers || [];
   const unassignedNumbers = numbers.filter((n: any) => !n.campaignId);
   const linkedBuyers = (campaignBuyers?.campaign_buyers || []).filter((cb: any) => cb.campaign_id === editCampaign?.id);
+  const buyers = buyersData?.buyers || [];
+  const linkedBuyerIds = linkedBuyers.map((cb: any) => cb.buyer_id);
 
   function openEdit(camp: any) {
     setEditCampaign(camp);
@@ -245,14 +267,33 @@ export default function Campaigns() {
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Linked Buyers</h4>
                 {linkedBuyers.length === 0 ? (
-                  <p className="text-xs text-gray-400">No buyers linked to this campaign</p>
+                  <p className="text-xs text-gray-400 mb-2">No buyers linked to this campaign</p>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5 mb-3">
                     {linkedBuyers.map((cb: any) => (
-                      <div key={cb.id} className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
-                        {cb.buyer_name || cb.buyer_id}
+                      <div key={cb.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-sm text-gray-700">{cb.buyer_name || cb.buyer_id}</span>
+                        <button onClick={() => unlinkBuyerMutation.mutate(cb.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     ))}
+                  </div>
+                )}
+                {buyers.filter((b: any) => !linkedBuyerIds.includes(b.id)).length > 0 && (
+                  <div className="flex gap-2">
+                    <select id="link-buyer"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
+                      <option value="">-- Link a buyer --</option>
+                      {buyers.filter((b: any) => !linkedBuyerIds.includes(b.id)).map((b: any) => (
+                        <option key={b.id} value={b.id}>{b.name}{b.phone ? ` (${b.phone})` : ""}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => { const sel = (document.getElementById("link-buyer") as HTMLSelectElement)?.value; if (sel) linkBuyerMutation.mutate(sel); }}
+                      disabled={linkBuyerMutation.isPending}
+                      className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">
+                      Link
+                    </button>
                   </div>
                 )}
               </div>

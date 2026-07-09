@@ -186,27 +186,64 @@ router.get("/customer/campaigns/:id/analytics", (req: Request, res: Response) =>
   return res.json({ totalCalls: 0, answeredCalls: 0, avgDuration: 0, totalCost: "0", daily: [] });
 });
 
+function mapBuyer(r: any) {
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    description: r.description,
+    isActive: !!r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 router.get("/customer/buyers", (req: Request, res: Response) => {
-  const buyers = db.prepare("SELECT * FROM buyers WHERE organization_id = ?").all(req.user!.organizationId);
-  return res.json({ buyers });
+  const rows = db.prepare("SELECT * FROM buyers WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
+  return res.json({ buyers: rows.map(mapBuyer) });
+});
+
+router.get("/customer/buyers/:id", (req: Request, res: Response) => {
+  const r = db.prepare("SELECT * FROM buyers WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId) as any;
+  if (!r) return res.status(404).json({ error: "Not found" });
+
+  const campaigns = db.prepare(`
+    SELECT cb.id as link_id, c.id as campaign_id, c.name as campaign_name
+    FROM campaign_buyers cb
+    JOIN campaigns c ON c.id = cb.campaign_id
+    WHERE cb.buyer_id = ?
+  `).all(req.params.id) as any[];
+
+  const groups = db.prepare(`
+    SELECT bgm.id as membership_id, bg.id as group_id, bg.name as group_name
+    FROM buyer_group_members bgm
+    JOIN buyer_groups bg ON bg.id = bgm.group_id
+    WHERE bgm.buyer_id = ?
+  `).all(req.params.id) as any[];
+
+  return res.json({ ...mapBuyer(r), campaigns, groups });
 });
 
 router.post("/customer/buyers", (req: Request, res: Response) => {
-  const { name, email, description } = req.body;
+  const { name, email, phone, description } = req.body;
   const id = crypto.randomUUID();
   const now = Date.now();
-  db.prepare(`INSERT INTO buyers (id, name, email, description, organization_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, description || null, req.user!.organizationId, now, now);
-  return res.json({ buyer: { id, name, email } });
+  db.prepare(`INSERT INTO buyers (id, name, email, phone, description, organization_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, phone || null, description || null, req.user!.organizationId, now, now);
+  return res.json({ buyer: { id, name, email, phone } });
 });
 
 router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
-  db.prepare("UPDATE buyers SET name = COALESCE(?, name), email = COALESCE(?, email), description = COALESCE(?, description), updated_at = ? WHERE id = ? AND organization_id = ?")
-    .run(req.body.name, req.body.email, req.body.description, Date.now(), req.params.id, req.user!.organizationId);
+  const { name, email, phone, description } = req.body;
+  db.prepare("UPDATE buyers SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), description = COALESCE(?, description), updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(name, email, phone, description, Date.now(), req.params.id, req.user!.organizationId);
   return res.json({ success: true });
 });
 
 router.delete("/customer/buyers/:id", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM campaign_buyers WHERE buyer_id = ?").run(req.params.id);
+  db.prepare("DELETE FROM buyer_group_members WHERE buyer_id = ?").run(req.params.id);
   db.prepare("DELETE FROM buyers WHERE id = ? AND organization_id = ?").run(req.params.id, req.user!.organizationId);
   return res.json({ success: true });
 });
@@ -226,12 +263,8 @@ router.post("/customer/campaign-buyers", (req: Request, res: Response) => {
   const now = Date.now();
   db.prepare(`INSERT INTO campaign_buyers (id, campaign_id, buyer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
     .run(id, req.body.campaign_id, req.body.buyer_id, now, now);
-  return res.json({ campaign_buyer: { id } });
-});
-
-router.patch("/customer/campaign-buyers/:id", (req: Request, res: Response) => {
-  db.prepare("UPDATE campaign_buyers SET updated_at = ? WHERE id = ?").run(Date.now(), req.params.id);
-  return res.json({ success: true });
+  const buyer = db.prepare("SELECT name FROM buyers WHERE id = ?").get(req.body.buyer_id) as any;
+  return res.json({ campaign_buyer: { id, campaign_id: req.body.campaign_id, buyer_id: req.body.buyer_id, buyer_name: buyer?.name } });
 });
 
 router.delete("/customer/campaign-buyers/:id", (req: Request, res: Response) => {
@@ -239,9 +272,22 @@ router.delete("/customer/campaign-buyers/:id", (req: Request, res: Response) => 
   return res.json({ success: true });
 });
 
+// Buyer Groups
 router.get("/customer/buyer-groups", (req: Request, res: Response) => {
-  const groups = db.prepare("SELECT * FROM buyer_groups WHERE organization_id = ?").all(req.user!.organizationId);
+  const groups = db.prepare("SELECT * FROM buyer_groups WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
   return res.json({ buyer_groups: groups });
+});
+
+router.get("/customer/buyer-groups/:id", (req: Request, res: Response) => {
+  const group = db.prepare("SELECT * FROM buyer_groups WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId) as any;
+  if (!group) return res.status(404).json({ error: "Not found" });
+  const members = db.prepare(`
+    SELECT bgm.id as membership_id, b.id as buyer_id, b.name as buyer_name, b.email, b.phone
+    FROM buyer_group_members bgm
+    JOIN buyers b ON b.id = bgm.buyer_id
+    WHERE bgm.group_id = ?
+  `).all(req.params.id);
+  return res.json({ id: group.id, name: group.name, members });
 });
 
 router.get("/customer/buyer-groups/:id/members", (req: Request, res: Response) => {
@@ -259,6 +305,25 @@ router.post("/customer/buyer-groups", (req: Request, res: Response) => {
   db.prepare("INSERT INTO buyer_groups (id, name, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
     .run(id, req.body.name, req.user!.organizationId, now, now);
   return res.json({ buyer_group: { id, name: req.body.name } });
+});
+
+router.delete("/customer/buyer-groups/:id", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM buyer_group_members WHERE group_id = ?").run(req.params.id);
+  db.prepare("DELETE FROM buyer_groups WHERE id = ? AND organization_id = ?").run(req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.post("/customer/buyer-groups/:id/members", (req: Request, res: Response) => {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO buyer_group_members (id, group_id, buyer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+    .run(id, req.params.id, req.body.buyer_id, now, now);
+  return res.json({ member: { id } });
+});
+
+router.delete("/customer/buyer-groups/:id/members/:memberId", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM buyer_group_members WHERE id = ? AND group_id = ?").run(req.params.memberId, req.params.id);
+  return res.json({ success: true });
 });
 
 router.get("/customer/call-vendors", (req: Request, res: Response) => {
