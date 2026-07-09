@@ -117,7 +117,19 @@ router.get("/customer/numbers/:id/test-runs", (_req: Request, res: Response) => 
 });
 
 router.get("/customer/campaigns", (req: Request, res: Response) => {
-  const campaigns = db.prepare("SELECT * FROM campaigns WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
+  const rows = db.prepare("SELECT * FROM campaigns WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
+  const campaigns = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    status: r.status,
+    useCase: r.use_case,
+    sampleMessages: r.sample_messages ? JSON.parse(r.sample_messages) : [],
+    monthlyVolume: r.monthly_volume,
+    isActive: !!r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
   return res.json({ campaigns });
 });
 
