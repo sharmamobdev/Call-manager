@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import api from "../lib/api";
-import { formatCurrency } from "../lib/utils";
-import { Phone, DollarSign, Activity, Receipt } from "lucide-react";
+import { formatCurrency, formatDateTime } from "../lib/utils";
+import { Phone, DollarSign, Activity, Receipt, PhoneCall } from "lucide-react";
 
 function StatCard({ title, value, icon: Icon, color }: any) {
   return (
@@ -28,6 +28,14 @@ export default function Dashboard() {
     queryFn: () => api.get("/customer/cdrs", { params: { pageSize: 5 } }).then((r) => r.data),
   });
 
+  const { data: liveData } = useQuery({
+    queryKey: ["dashboard-live-calls"],
+    queryFn: () => api.get("/customer/live-calls").then((r) => r.data),
+    refetchInterval: 10000,
+  });
+
+  const liveCalls = liveData?.calls || [];
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
@@ -49,7 +57,7 @@ export default function Dashboard() {
                   <p className="text-sm font-medium text-gray-700">
                     {cdr.fromNumber} → {cdr.toNumber}
                   </p>
-                  <p className="text-xs text-gray-400">{new Date(cdr.callDate).toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">{formatDateTime(cdr.callDate)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-700">{cdr.duration}s</p>
@@ -83,6 +91,28 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {liveCalls.length > 0 && (
+        <div className="bg-white rounded-xl border border-yellow-200 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <PhoneCall className="w-5 h-5 text-yellow-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Live Calls ({liveCalls.length})</h3>
+          </div>
+          <div className="space-y-3">
+            {liveCalls.slice(0, 5).map((call: any) => (
+              <div key={call.id} className="flex items-center justify-between py-2 border-b border-yellow-100 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    {call.fromNumber} → {call.toNumber}
+                  </p>
+                  <p className="text-xs text-gray-400">{formatDateTime(call.callDate)}</p>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 animate-pulse">{call.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
