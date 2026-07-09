@@ -235,9 +235,18 @@ router.post("/customer/buyers", (req: Request, res: Response) => {
 });
 
 router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
-  const { name, email, phone, description } = req.body;
-  db.prepare("UPDATE buyers SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), description = COALESCE(?, description), updated_at = ? WHERE id = ? AND organization_id = ?")
-    .run(name, email, phone, description, Date.now(), req.params.id, req.user!.organizationId);
+  const sets: string[] = [];
+  const params: any[] = [];
+  for (const [key, value] of Object.entries(req.body)) {
+    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    if (value === undefined) continue;
+    sets.push(`${col} = ?`);
+    params.push(value);
+  }
+  if (!sets.length) return res.status(400).json({ error: "No fields to update" });
+  sets.push("updated_at = ?");
+  params.push(Date.now(), req.params.id, req.user!.organizationId);
+  db.prepare(`UPDATE buyers SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`).run(...params);
   return res.json({ success: true });
 });
 
