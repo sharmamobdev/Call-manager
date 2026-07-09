@@ -40,10 +40,24 @@ async function seed() {
   console.log("Seed complete!");
   console.log("  Admin login:    admin@dialclear.com / admin123");
   console.log("  Customer login: customer@dialclear.com / customer123");
-  process.exit(0);
 }
 
-seed().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+async function main() {
+  try {
+    await seed();
+    if (process.env.RAILWAY_SERVICE_NAME || !process.listeners("request").length) {
+      process.exit(0);
+    }
+  } catch (err) {
+    console.error("Seed failed:", err);
+    if (process.env.RAILWAY_SERVICE_NAME || !process.listeners("request").length) {
+      process.exit(1);
+    }
+  }
+}
+
+if (process.argv[1]?.includes("seed")) {
+  main();
+}
+
+export default seed;

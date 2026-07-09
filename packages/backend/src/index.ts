@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { config } from "./config/index.js";
-import { createTables } from "./db/index.js";
+import { createTables, db } from "./db/index.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
 import authRoutes from "./routes/auth.js";
@@ -43,6 +43,12 @@ app.use(notFound);
 app.use(errorHandler);
 
 createTables();
+
+// Auto-seed on fresh database
+const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as any;
+if (!userCount?.count) {
+  import("./db/seed.js").then((m) => m.default()).catch((e) => console.error("Seed error:", e));
+}
 
 app.listen(config.port, config.host, () => {
   console.log(`DialClear API server running on http://${config.host}:${config.port}`);
