@@ -69,6 +69,14 @@ export const signalwire = {
     return swFetch(`/IncomingPhoneNumbers.json${toQueryString(params)}`);
   },
 
+  // ── Update a number (voice URL, SMS URL, etc.) ──
+  async updateNumber(phoneNumberSid: string, params: Record<string, string>) {
+    return swFetch(`/IncomingPhoneNumbers/${phoneNumberSid}.json`, {
+      method: "PUT",
+      body: JSON.stringify(params),
+    });
+  },
+
   // ── Release a number ──
   async releaseNumber(phoneNumberSid: string) {
     return swFetch(`/IncomingPhoneNumbers/${phoneNumberSid}.json`, {

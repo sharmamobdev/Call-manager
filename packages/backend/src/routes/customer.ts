@@ -116,6 +116,31 @@ router.get("/customer/numbers/:id/test-runs", (_req: Request, res: Response) => 
   return res.json({ test_runs: [] });
 });
 
+router.post("/customer/numbers/:id/configure-webhook", async (req: Request, res: Response) => {
+  try {
+    const number = db.prepare("SELECT * FROM numbers WHERE id = ? AND organization_id = ?")
+      .get(req.params.id, req.user!.organizationId) as any;
+    if (!number) return res.status(404).json({ error: "Number not found" });
+    if (!number.signalwire_sid) return res.status(400).json({ error: "Number has no SignalWire SID — sync it first" });
+
+    const baseUrl = (req.body.base_url || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+
+    await signalwire.updateNumber(number.signalwire_sid, {
+      VoiceUrl: `${baseUrl}/v1/webhook/voice/${number.signalwire_sid}`,
+      VoiceMethod: "POST",
+      StatusCallback: `${baseUrl}/v1/webhook/status`,
+      StatusCallbackMethod: "POST",
+      SmsUrl: `${baseUrl}/v1/webhook/sms/${number.signalwire_sid}`,
+      SmsMethod: "POST",
+    });
+
+    return res.json({ success: true, message: "Webhook configured on SignalWire" });
+  } catch (err: any) {
+    console.error("Configure webhook error:", err.message);
+    return res.status(502).json({ error: `Failed to configure webhook: ${err.message}` });
+  }
+});
+
 router.get("/customer/campaigns", (req: Request, res: Response) => {
   const rows = db.prepare("SELECT * FROM campaigns WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
   const campaigns = rows.map((r) => ({
