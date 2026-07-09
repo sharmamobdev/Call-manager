@@ -134,8 +134,22 @@ router.get("/customer/campaigns", (req: Request, res: Response) => {
 });
 
 router.get("/customer/campaigns/:id", (req: Request, res: Response) => {
-  const campaign = db.prepare("SELECT * FROM campaigns WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId);
-  return res.json(campaign || { error: "Not found" });
+  const r = db.prepare("SELECT * FROM campaigns WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId) as any;
+  if (!r) return res.status(404).json({ error: "Not found" });
+  return res.json({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    status: r.status,
+    useCase: r.use_case,
+    a2pBrandId: r.a2p_brand_id,
+    a2pCampaignId: r.a2p_campaign_id,
+    sampleMessages: r.sample_messages ? JSON.parse(r.sample_messages) : [],
+    monthlyVolume: r.monthly_volume,
+    isActive: !!r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  });
 });
 
 router.post("/customer/campaigns", (req: Request, res: Response) => {
@@ -152,16 +166,23 @@ router.patch("/customer/campaigns/:id", (req: Request, res: Response) => {
   const params: any[] = [];
   for (const [key, value] of Object.entries(req.body)) {
     const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    if (value === undefined) continue;
     sets.push(`${col} = ?`);
     params.push(value);
   }
+  if (!sets.length) return res.status(400).json({ error: "No fields to update" });
   sets.push("updated_at = ?");
   params.push(Date.now(), req.params.id, req.user!.organizationId);
   db.prepare(`UPDATE campaigns SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`).run(...params);
   return res.json({ success: true });
 });
 
-router.get("/customer/campaigns/:id/analytics", (_req: Request, res: Response) => {
+router.delete("/customer/campaigns/:id", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM campaigns WHERE id = ? AND organization_id = ?").run(req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.get("/customer/campaigns/:id/analytics", (req: Request, res: Response) => {
   return res.json({ totalCalls: 0, answeredCalls: 0, avgDuration: 0, totalCost: "0", daily: [] });
 });
 
