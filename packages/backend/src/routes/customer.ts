@@ -1,0 +1,220 @@
+import { Router, Request, Response } from "express";
+import { db } from "../db/index.js";
+import { authenticate, authorize } from "../middleware/auth.js";
+import { signalwire } from "../services/signalwire.js";
+
+const router = Router();
+router.use(authenticate);
+
+router.get("/customer/numbers", (req: Request, res: Response) => {
+  const numbers = db.prepare("SELECT * FROM numbers WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
+  return res.json({ numbers, allow_tfn: true });
+});
+
+router.get("/customer/available-numbers", async (req: Request, res: Response) => {
+  try {
+    const areaCode = req.query.area_code as string | undefined;
+    const tollFree = req.query.toll_free === "true";
+    const data = await signalwire.searchAvailable(areaCode, tollFree);
+    const numbers = (data.available_phone_numbers || []).map((n: any) => ({
+      phone_number: n.phone_number,
+      price: parseFloat(n.cost || "1.00"),
+      locality: n.locality || "",
+      region: n.region || "",
+    }));
+    return res.json({ numbers, allow_tfn: true });
+  } catch (err: any) {
+    console.error("Available numbers error:", err.message);
+    return res.status(502).json({ error: "Failed to fetch available numbers from carrier" });
+  }
+});
+
+router.post("/customer/numbers/buy", async (req: Request, res: Response) => {
+  try {
+    const { area_code, phone_number, friendly_name, monthly_rental } = req.body;
+    let result: any;
+
+    if (phone_number) {
+      result = await signalwire.purchaseNumber(phone_number, friendly_name);
+    } else {
+      const search = await signalwire.searchAvailable(area_code || undefined, false, 1);
+      const available = search.available_phone_numbers || [];
+      if (available.length === 0) {
+        return res.status(400).json({ error: "No numbers available in that area code" });
+      }
+      result = await signalwire.purchaseNumber(available[0].phone_number, friendly_name);
+    }
+
+    const e164 = result.phone_number;
+    const sid = result.sid || crypto.randomUUID();
+    const price = parseFloat(result.cost || monthly_rental || "1.00");
+    const id = crypto.randomUUID();
+
+    db.prepare(`INSERT INTO numbers (id, e164, friendly_name, organization_id, is_active, is_toll_free, monthly_rental, purchased_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?)`).run(id, e164, friendly_name || e164, req.user!.organizationId, price, Date.now(), Date.now(), Date.now());
+
+    return res.json({ number: { id, e164, monthlyRental: price, signalwireSid: sid } });
+  } catch (err: any) {
+    console.error("Buy number error:", err.message);
+    return res.status(502).json({ error: `Failed to purchase number: ${err.message}` });
+  }
+});
+
+router.patch("/customer/numbers/:id", (req: Request, res: Response) => {
+  const sets: string[] = [];
+  const params: any[] = [];
+  for (const [key, value] of Object.entries(req.body)) {
+    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    sets.push(`${col} = ?`);
+    params.push(value);
+  }
+  sets.push("updated_at = ?");
+  params.push(Date.now(), req.params.id, req.user!.organizationId);
+  db.prepare(`UPDATE numbers SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`).run(...params);
+  return res.json({ success: true });
+});
+
+router.post("/customer/numbers/:id/assign-campaign", (req: Request, res: Response) => {
+  db.prepare("UPDATE numbers SET campaign_id = ?, updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(req.body.campaign_id, Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.post("/customer/numbers/:id/assign-vendor", (req: Request, res: Response) => {
+  db.prepare("UPDATE numbers SET call_vendor_id = ?, updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(req.body.call_vendor_id, Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.post("/customer/numbers/:id/ivr", (req: Request, res: Response) => {
+  db.prepare("UPDATE numbers SET ivr_config = ?, updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(JSON.stringify(req.body), Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.post("/customer/numbers/:id/test", (_req: Request, res: Response) => {
+  return res.json({ success: true, message: "Test initiated" });
+});
+
+router.get("/customer/numbers/:id/test-runs", (_req: Request, res: Response) => {
+  return res.json({ test_runs: [] });
+});
+
+router.get("/customer/campaigns", (req: Request, res: Response) => {
+  const campaigns = db.prepare("SELECT * FROM campaigns WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
+  return res.json({ campaigns });
+});
+
+router.get("/customer/campaigns/:id", (req: Request, res: Response) => {
+  const campaign = db.prepare("SELECT * FROM campaigns WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId);
+  return res.json(campaign || { error: "Not found" });
+});
+
+router.post("/customer/campaigns", (req: Request, res: Response) => {
+  const { name, description, useCase, sampleMessages, monthlyVolume } = req.body;
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare(`INSERT INTO campaigns (id, name, description, organization_id, use_case, sample_messages, monthly_volume, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, description || null, req.user!.organizationId, useCase || null, JSON.stringify(sampleMessages || []), monthlyVolume || 0, now, now);
+  return res.json({ campaign: { id, name, description, useCase } });
+});
+
+router.patch("/customer/campaigns/:id", (req: Request, res: Response) => {
+  const sets: string[] = [];
+  const params: any[] = [];
+  for (const [key, value] of Object.entries(req.body)) {
+    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    sets.push(`${col} = ?`);
+    params.push(value);
+  }
+  sets.push("updated_at = ?");
+  params.push(Date.now(), req.params.id, req.user!.organizationId);
+  db.prepare(`UPDATE campaigns SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`).run(...params);
+  return res.json({ success: true });
+});
+
+router.get("/customer/campaigns/:id/analytics", (_req: Request, res: Response) => {
+  return res.json({ totalCalls: 0, answeredCalls: 0, avgDuration: 0, totalCost: "0", daily: [] });
+});
+
+router.get("/customer/buyers", (req: Request, res: Response) => {
+  const buyers = db.prepare("SELECT * FROM buyers WHERE organization_id = ?").all(req.user!.organizationId);
+  return res.json({ buyers });
+});
+
+router.post("/customer/buyers", (req: Request, res: Response) => {
+  const { name, email, description } = req.body;
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare(`INSERT INTO buyers (id, name, email, description, organization_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, description || null, req.user!.organizationId, now, now);
+  return res.json({ buyer: { id, name, email } });
+});
+
+router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
+  db.prepare("UPDATE buyers SET name = COALESCE(?, name), email = COALESCE(?, email), description = COALESCE(?, description), updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(req.body.name, req.body.email, req.body.description, Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.delete("/customer/buyers/:id", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM buyers WHERE id = ? AND organization_id = ?").run(req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+router.get("/customer/campaign-buyers", (_req: Request, res: Response) => {
+  const list = db.prepare(`
+    SELECT cb.*, c.name as campaign_name, b.name as buyer_name
+    FROM campaign_buyers cb
+    LEFT JOIN campaigns c ON c.id = cb.campaign_id
+    LEFT JOIN buyers b ON b.id = cb.buyer_id
+  `).all();
+  return res.json({ campaign_buyers: list });
+});
+
+router.post("/customer/campaign-buyers", (req: Request, res: Response) => {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare(`INSERT INTO campaign_buyers (id, campaign_id, buyer_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
+    .run(id, req.body.campaign_id, req.body.buyer_id, now, now);
+  return res.json({ campaign_buyer: { id } });
+});
+
+router.patch("/customer/campaign-buyers/:id", (req: Request, res: Response) => {
+  db.prepare("UPDATE campaign_buyers SET updated_at = ? WHERE id = ?").run(Date.now(), req.params.id);
+  return res.json({ success: true });
+});
+
+router.delete("/customer/campaign-buyers/:id", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM campaign_buyers WHERE id = ?").run(req.params.id);
+  return res.json({ success: true });
+});
+
+router.get("/customer/buyer-groups", (req: Request, res: Response) => {
+  const groups = db.prepare("SELECT * FROM buyer_groups WHERE organization_id = ?").all(req.user!.organizationId);
+  return res.json({ buyer_groups: groups });
+});
+
+router.get("/customer/buyer-groups/:id/members", (req: Request, res: Response) => {
+  const members = db.prepare(`
+    SELECT bgm.*, b.name as buyer_name FROM buyer_group_members bgm
+    LEFT JOIN buyers b ON b.id = bgm.buyer_id
+    WHERE bgm.group_id = ?
+  `).all(req.params.id);
+  return res.json({ members });
+});
+
+router.post("/customer/buyer-groups", (req: Request, res: Response) => {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO buyer_groups (id, name, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+    .run(id, req.body.name, req.user!.organizationId, now, now);
+  return res.json({ buyer_group: { id, name: req.body.name } });
+});
+
+router.get("/customer/call-vendors", (req: Request, res: Response) => {
+  const vendors = db.prepare("SELECT * FROM call_vendors WHERE organization_id = ?").all(req.user!.organizationId);
+  return res.json({ call_vendors: vendors });
+});
+
+export default router;

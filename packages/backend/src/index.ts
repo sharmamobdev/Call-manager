@@ -1,0 +1,51 @@
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { config } from "./config/index.js";
+import { createTables } from "./db/index.js";
+import { errorHandler, notFound } from "./middleware/error.js";
+
+import authRoutes from "./routes/auth.js";
+import organizationRoutes from "./routes/organizations.js";
+import customerRoutes from "./routes/customer.js";
+import billingRoutes from "./routes/billing.js";
+import cdrRoutes from "./routes/cdrs.js";
+import reportRoutes from "./routes/reports.js";
+import adminRoutes from "./routes/admin/index.js";
+import webhookRoutes from "./routes/webhook.js";
+
+const app = express();
+
+app.use(helmet());
+app.use(cors({
+  origin: config.corsOrigin,
+  credentials: true,
+}));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+app.get("/v1/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.use("/v1", authRoutes);
+app.use("/v1", customerRoutes);
+app.use("/v1", billingRoutes);
+app.use("/v1", cdrRoutes);
+app.use("/v1", reportRoutes);
+app.use("/v1", adminRoutes);
+app.use("/v1", organizationRoutes);
+app.use("/v1", webhookRoutes);
+
+app.use(notFound);
+app.use(errorHandler);
+
+createTables();
+
+app.listen(config.port, config.host, () => {
+  console.log(`DialClear API server running on http://${config.host}:${config.port}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+});
+
