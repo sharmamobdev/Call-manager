@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../lib/api";
 import { formatDate, formatCurrency } from "../lib/utils";
@@ -21,6 +21,19 @@ export default function Campaigns() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", useCase: "" });
   const [editForm, setEditForm] = useState({ name: "", description: "", useCase: "", status: "draft" });
+  const [selectedNumberId, setSelectedNumberId] = useState("");
+  const [selectedBuyerId, setSelectedBuyerId] = useState("");
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const editCampaignRef = useRef(editCampaign);
+  useEffect(() => { editCampaignRef.current = editCampaign; }, [editCampaign]);
+
+  useEffect(() => {
+    if (message) {
+      const t = setTimeout(() => setMessage(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [message]);
 
   const { data } = useQuery({
     queryKey: ["campaigns"],
@@ -57,16 +70,20 @@ export default function Campaigns() {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       setShowCreate(false);
       setForm({ name: "", description: "", useCase: "" });
+      setMessage({ type: "success", text: "Campaign created" });
     },
+    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to create campaign" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => api.patch(`/customer/campaigns/${editCampaign.id}`, editForm),
+    mutationFn: () => api.patch(`/customer/campaigns/${editCampaignRef.current?.id}`, editForm),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-analytics"] });
       setEditCampaign(null);
+      setMessage({ type: "success", text: "Campaign saved" });
     },
+    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to save campaign" }),
   });
 
   const deleteMutation = useMutation({
@@ -74,28 +91,46 @@ export default function Campaigns() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       setDeleteConfirm(null);
+      setMessage({ type: "success", text: "Campaign deleted" });
     },
+    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to delete campaign" }),
   });
 
   const assignNumberMutation = useMutation({
-    mutationFn: (numberId: string) => api.post(`/customer/numbers/${numberId}/assign-campaign`, { campaign_id: editCampaign.id }),
+    mutationFn: (numberId: string) => {
+      const cid = editCampaignRef.current?.id;
+      if (!cid) throw new Error("No campaign selected");
+      return api.post(`/customer/numbers/${numberId}/assign-campaign`, { campaign_id: cid });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["numbers"] });
+      setSelectedNumberId("");
+      setMessage({ type: "success", text: "Number assigned" });
     },
+    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to assign number" }),
   });
 
   const linkBuyerMutation = useMutation({
-    mutationFn: (buyerId: string) => api.post("/customer/campaign-buyers", { campaign_id: editCampaign.id, buyer_id: buyerId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaign.id] });
+    mutationFn: (buyerId: string) => {
+      const cid = editCampaignRef.current?.id;
+      if (!cid) throw new Error("No campaign selected");
+      return api.post("/customer/campaign-buyers", { campaign_id: cid, buyer_id: buyerId });
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaignRef.current?.id] });
+      setSelectedBuyerId("");
+      setMessage({ type: "success", text: "Buyer linked" });
+    },
+    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to link buyer" }),
   });
 
   const unlinkBuyerMutation = useMutation({
     mutationFn: (linkId: string) => api.delete(`/customer/campaign-buyers/${linkId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaign.id] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaignRef.current?.id] });
+      setMessage({ type: "success", text: "Buyer unlinked" });
     },
+    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to unlink buyer" }),
   });
 
   const campaigns = data?.campaigns || [];
@@ -108,16 +143,26 @@ export default function Campaigns() {
   function openEdit(camp: any) {
     setEditCampaign(camp);
     setEditForm({ name: camp.name || "", description: camp.description || "", useCase: camp.useCase || "", status: camp.status || "draft" });
+    setSelectedNumberId("");
+    setSelectedBuyerId("");
   }
 
   return (
     <div className="space-y-6">
+      {/* Toast */}
+      {message && (
+        <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-all ${
+          message.type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+        }`}>
+          {message.text}
+          <button onClick={() => setMessage(null)} className="ml-3 text-white/80 hover:text-white"><X className="w-4 h-4 inline" /></button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-800">Campaigns</h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors"
-        >
+        <button onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors">
           <Plus className="w-4 h-4" /> Create Campaign
         </button>
       </div>
@@ -200,7 +245,6 @@ export default function Campaigns() {
                 <Save className="w-4 h-4" /> {updateMutation.isPending ? "Saving..." : "Save Changes"}
               </button>
 
-              {/* Divider */}
               <hr className="border-gray-200" />
 
               {/* Analytics */}
@@ -243,19 +287,17 @@ export default function Campaigns() {
                 </div>
                 {unassignedNumbers.length > 0 && (
                   <div className="flex gap-2">
-                    <select id="assign-number"
+                    <select value={selectedNumberId} onChange={(e) => setSelectedNumberId(e.target.value)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
                       <option value="">-- Select a number --</option>
                       {unassignedNumbers.map((n: any) => (
                         <option key={n.id} value={n.id}>{n.e164} {n.friendlyName ? `(${n.friendlyName})` : ""}</option>
                       ))}
                     </select>
-                    <button onClick={() => {
-                      const sel = (document.getElementById("assign-number") as HTMLSelectElement)?.value;
-                      if (sel) { assignNumberMutation.mutate(sel); (document.getElementById("assign-number") as HTMLSelectElement).value = ""; }
-                    }} disabled={assignNumberMutation.isPending}
+                    <button onClick={() => { if (selectedNumberId) assignNumberMutation.mutate(selectedNumberId); }}
+                      disabled={assignNumberMutation.isPending || !selectedNumberId}
                       className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">
-                      Assign
+                      {assignNumberMutation.isPending ? "..." : "Assign"}
                     </button>
                   </div>
                 )}
@@ -273,7 +315,8 @@ export default function Campaigns() {
                     {linkedBuyers.map((cb: any) => (
                       <div key={cb.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                         <span className="text-sm text-gray-700">{cb.buyer_name || cb.buyer_id}</span>
-                        <button onClick={() => unlinkBuyerMutation.mutate(cb.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                        <button onClick={() => unlinkBuyerMutation.mutate(cb.id)} disabled={unlinkBuyerMutation.isPending}
+                          className="p-1 text-gray-400 hover:text-red-500 rounded disabled:opacity-50">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -282,17 +325,17 @@ export default function Campaigns() {
                 )}
                 {buyers.filter((b: any) => !linkedBuyerIds.includes(b.id)).length > 0 && (
                   <div className="flex gap-2">
-                    <select id="link-buyer"
+                    <select value={selectedBuyerId} onChange={(e) => setSelectedBuyerId(e.target.value)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
                       <option value="">-- Link a buyer --</option>
                       {buyers.filter((b: any) => !linkedBuyerIds.includes(b.id)).map((b: any) => (
                         <option key={b.id} value={b.id}>{b.name}{b.phone ? ` (${b.phone})` : ""}</option>
                       ))}
                     </select>
-                    <button onClick={() => { const sel = (document.getElementById("link-buyer") as HTMLSelectElement)?.value; if (sel) linkBuyerMutation.mutate(sel); }}
-                      disabled={linkBuyerMutation.isPending}
+                    <button onClick={() => { if (selectedBuyerId) linkBuyerMutation.mutate(selectedBuyerId); }}
+                      disabled={linkBuyerMutation.isPending || !selectedBuyerId}
                       className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">
-                      Link
+                      {linkBuyerMutation.isPending ? "..." : "Link"}
                     </button>
                   </div>
                 )}
@@ -339,7 +382,7 @@ export default function Campaigns() {
               </div>
               <div className="flex items-center gap-1">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[camp.status] || "bg-gray-100 text-gray-600"}`}>
-                  {camp.status.replace("_", " ")}
+                  {camp.status.replace(/_/g, " ")}
                 </span>
                 <button onClick={(e) => { e.stopPropagation(); openEdit(camp); }}
                   className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg opacity-0 group-hover:opacity-100 transition-all">

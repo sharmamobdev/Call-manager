@@ -261,8 +261,8 @@ router.get("/customer/campaign-buyers", (_req: Request, res: Response) => {
   const list = db.prepare(`
     SELECT cb.*, c.name as campaign_name, b.name as buyer_name
     FROM campaign_buyers cb
-    LEFT JOIN campaigns c ON c.id = cb.campaign_id
-    LEFT JOIN buyers b ON b.id = cb.buyer_id
+    JOIN campaigns c ON c.id = cb.campaign_id
+    JOIN buyers b ON b.id = cb.buyer_id
   `).all();
   return res.json({ campaign_buyers: list });
 });
