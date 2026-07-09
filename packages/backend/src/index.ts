@@ -30,6 +30,10 @@ app.get("/v1/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Webhook routes MUST be registered before authenticated routes
+// so SignalWire callbacks don't hit the authenticate middleware
+app.use("/v1", webhookRoutes);
+
 app.use("/v1", authRoutes);
 app.use("/v1", customerRoutes);
 app.use("/v1", billingRoutes);
@@ -37,7 +41,6 @@ app.use("/v1", cdrRoutes);
 app.use("/v1", reportRoutes);
 app.use("/v1", adminRoutes);
 app.use("/v1", organizationRoutes);
-app.use("/v1", webhookRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
