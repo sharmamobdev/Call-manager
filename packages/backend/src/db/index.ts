@@ -244,6 +244,11 @@ export function createTables() {
   `;
 
   exec(createStmts);
+
+  // Migrations (safe to re-run)
+  try { db.prepare("ALTER TABLE numbers ADD COLUMN signalwire_sid TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE numbers ADD COLUMN assigned_at INTEGER").run(); } catch (_) {}
+
   saveDatabase();
   console.log("Database tables created successfully");
 }

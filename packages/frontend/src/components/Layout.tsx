@@ -19,6 +19,12 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+const adminNavItems = [
+  { href: "/admin", label: "Admin Dashboard", icon: LayoutDashboard },
+  { href: "/admin/numbers", label: "All Numbers", icon: Phone },
+  { href: "/admin/customers", label: "Customers", icon: Users },
+];
+
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -60,6 +66,32 @@ export default function Layout() {
               </Link>
             );
           })}
+          {user?.role === "admin" && (
+            <>
+              <div className="pt-3 pb-1">
+                <p className="px-3 text-xs font-semibold text-gray-400 uppercase">Admin</p>
+              </div>
+              {adminNavItems.map((item) => {
+                const isActive = location.pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-[#1985A1]/10 text-[#1985A1]"
+                        : "text-gray-600 hover:bg-gray-100"
+                    )}
+                  >
+                    <item.icon className="w-5 h-5" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
           <div className="flex items-center justify-between">
@@ -77,7 +109,8 @@ export default function Layout() {
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           <h1 className="text-lg font-semibold text-gray-800">
-            {navItems.find((i) => i.href === location.pathname)?.label || "Portal"}
+            {navItems.find((i) => i.href === location.pathname)?.label ||
+             adminNavItems.find((i) => i.href === location.pathname)?.label || "Portal"}
           </h1>
         </header>
         <main className="p-4 lg:p-8">

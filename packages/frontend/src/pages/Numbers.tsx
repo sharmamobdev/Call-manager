@@ -77,7 +77,7 @@ export default function Numbers() {
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <p className="text-sm text-gray-500 mb-2">Available Numbers:</p>
-                {available?.available_phone_numbers?.slice(0, 5).map((n: any) => (
+                {available?.numbers?.slice(0, 5).map((n: any) => (
                   <div key={n.phone_number} className="text-sm text-gray-700 py-1">
                     {n.phone_number} - {formatCurrency(n.price || "0")}
                   </div>

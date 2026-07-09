@@ -11,6 +11,9 @@ import Reports from "./pages/Reports";
 import Buyers from "./pages/Buyers";
 import CallVendors from "./pages/CallVendors";
 import Settings from "./pages/Settings";
+import AdminDashboard from "./pages/admin/Dashboard";
+import AdminNumbers from "./pages/admin/Numbers";
+import AdminCustomers from "./pages/admin/Customers";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -40,6 +43,9 @@ export default function App() {
         <Route path="buyers" element={<Buyers />} />
         <Route path="vendors" element={<CallVendors />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="admin" element={<AdminDashboard />} />
+        <Route path="admin/numbers" element={<AdminNumbers />} />
+        <Route path="admin/customers" element={<AdminCustomers />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

@@ -7,7 +7,23 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/customer/numbers", (req: Request, res: Response) => {
-  const numbers = db.prepare("SELECT * FROM numbers WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
+  const rows = db.prepare("SELECT * FROM numbers WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
+  const numbers = rows.map((r) => ({
+    id: r.id,
+    e164: r.e164,
+    friendlyName: r.friendly_name,
+    organizationId: r.organization_id,
+    campaignId: r.campaign_id,
+    callVendorId: r.call_vendor_id,
+    isActive: !!r.is_active,
+    isTollFree: !!r.is_toll_free,
+    monthlyRental: r.monthly_rental,
+    ivrConfig: r.ivr_config ? JSON.parse(r.ivr_config) : null,
+    signalwireSid: r.signalwire_sid,
+    purchasedAt: r.purchased_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
   return res.json({ numbers, allow_tfn: true });
 });
 
@@ -50,8 +66,8 @@ router.post("/customer/numbers/buy", async (req: Request, res: Response) => {
     const price = parseFloat(result.cost || monthly_rental || "1.00");
     const id = crypto.randomUUID();
 
-    db.prepare(`INSERT INTO numbers (id, e164, friendly_name, organization_id, is_active, is_toll_free, monthly_rental, purchased_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?)`).run(id, e164, friendly_name || e164, req.user!.organizationId, price, Date.now(), Date.now(), Date.now());
+    db.prepare(`INSERT INTO numbers (id, e164, friendly_name, organization_id, is_active, is_toll_free, monthly_rental, signalwire_sid, purchased_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)`).run(id, e164, friendly_name || e164, req.user!.organizationId, price, sid, Date.now(), Date.now(), Date.now());
 
     return res.json({ number: { id, e164, monthlyRental: price, signalwireSid: sid } });
   } catch (err: any) {

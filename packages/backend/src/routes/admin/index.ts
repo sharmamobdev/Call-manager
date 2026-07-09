@@ -1,10 +1,60 @@
 import { Router, Request, Response } from "express";
 import { db } from "../../db/index.js";
 import { authenticate, authorize } from "../../middleware/auth.js";
+import { signalwire } from "../../services/signalwire.js";
 
 const router = Router();
 router.use(authenticate);
 router.use(authorize("admin", "reseller"));
+
+// ── Numbers ──────────────────────────────────────────
+router.get("/admin/numbers", (req: Request, res: Response) => {
+  const rows = db.prepare(`
+    SELECT n.*, o.name as organization_name
+    FROM numbers n
+    LEFT JOIN organizations o ON o.id = n.organization_id
+    ORDER BY n.created_at DESC
+  `).all() as any[];
+  const numbers = rows.map((r) => ({
+    id: r.id,
+    e164: r.e164,
+    friendlyName: r.friendly_name,
+    organizationId: r.organization_id,
+    organizationName: r.organization_name,
+    campaignId: r.campaign_id,
+    callVendorId: r.call_vendor_id,
+    isActive: !!r.is_active,
+    isTollFree: !!r.is_toll_free,
+    monthlyRental: r.monthly_rental,
+    signalwireSid: r.signalwire_sid,
+    purchasedAt: r.purchased_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+  return res.json({ numbers });
+});
+
+router.post("/admin/numbers/sync", async (_req: Request, res: Response) => {
+  try {
+    const data = await signalwire.listNumbers();
+    const swNumbers: any[] = data.incoming_phone_numbers || [];
+    let synced = 0;
+    for (const sw of swNumbers) {
+      const existing = db.prepare("SELECT id FROM numbers WHERE e164 = ?").get(sw.phone_number);
+      if (existing) continue;
+      const id = crypto.randomUUID();
+      const orgId = _req.user!.organizationId;
+      db.prepare(`INSERT INTO numbers (id, e164, friendly_name, organization_id, is_active, monthly_rental, signalwire_sid, purchased_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`)
+        .run(id, sw.phone_number, sw.friendly_name || null, orgId, parseFloat(sw.cost || "1.00"), sw.sid, Date.now(), Date.now(), Date.now());
+      synced++;
+    }
+    return res.json({ synced, total: swNumbers.length });
+  } catch (err: any) {
+    console.error("Sync numbers error:", err.message);
+    return res.status(502).json({ error: `Failed to sync numbers: ${err.message}` });
+  }
+});
 
 router.get("/admin/customers", (req: Request, res: Response) => {
   let query = "SELECT * FROM organizations WHERE type = 'customer'";
