@@ -361,7 +361,15 @@ router.delete("/customer/buyer-groups/:id/members/:memberId", (req: Request, res
 });
 
 router.get("/customer/call-vendors", (req: Request, res: Response) => {
-  const vendors = db.prepare("SELECT * FROM call_vendors WHERE organization_id = ?").all(req.user!.organizationId);
+  const rows = db.prepare("SELECT * FROM call_vendors WHERE organization_id = ?").all(req.user!.organizationId) as any[];
+  const vendors = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    isActive: !!r.is_active,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
   return res.json({ call_vendors: vendors });
 });
 

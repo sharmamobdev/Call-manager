@@ -8,7 +8,7 @@ router.use(authenticate);
 router.get("/customer/reports/campaign-summary", (req: Request, res: Response) => {
   const orgId = req.user!.organizationId;
 
-  const summary = db.prepare(`
+  const row = db.prepare(`
     SELECT
       COUNT(*) as total_calls,
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as answered_calls,
@@ -16,9 +16,15 @@ router.get("/customer/reports/campaign-summary", (req: Request, res: Response) =
       COALESCE(SUM(cost), 0) as total_cost,
       COALESCE(AVG(duration), 0) as avg_duration
     FROM cdrs WHERE organization_id = ?
-  `).get(orgId);
+  `).get(orgId) as any;
 
-  return res.json(summary);
+  return res.json({
+    totalCalls: row?.total_calls || 0,
+    answeredCalls: row?.answered_calls || 0,
+    totalDuration: row?.total_duration || 0,
+    totalCost: (row?.total_cost || 0).toFixed(2),
+    avgDuration: row?.avg_duration || 0,
+  });
 });
 
 router.get("/customer/reports/campaign-summary/export.csv", (req: Request, res: Response) => {
@@ -46,7 +52,15 @@ router.get("/customer/reports/consolidated-campaigns", (req: Request, res: Respo
 });
 
 router.get("/customer/daily-reports/settings", (req: Request, res: Response) => {
-  const settings = db.prepare("SELECT * FROM daily_reports WHERE organization_id = ?").all(req.user!.organizationId);
+  const rows = db.prepare("SELECT * FROM daily_reports WHERE organization_id = ?").all(req.user!.organizationId) as any[];
+  const settings = rows.map((r) => ({
+    id: r.id,
+    campaignId: r.campaign_id,
+    scheduleType: r.schedule_type,
+    recipients: r.recipients ? JSON.parse(r.recipients) : [],
+    isActive: !!r.is_active,
+    createdAt: r.created_at,
+  }));
   return res.json({ settings });
 });
 

@@ -67,12 +67,12 @@ router.post("/auth/login", async (req: Request, res: Response) => {
       me: {
         id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        displayName: user.displayName,
-        avatarUrl: user.avatarUrl,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        displayName: user.display_name,
+        avatarUrl: user.avatar_url,
         role: user.role,
-        organizationId: user.organizationId,
+        organizationId: user.organization_id,
       },
     });
   } catch (err) {

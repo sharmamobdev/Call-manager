@@ -24,7 +24,16 @@ router.get("/customer/billing/summary", (req: Request, res: Response) => {
 });
 
 router.get("/customer/billing/ledger", (req: Request, res: Response) => {
-  const entries = db.prepare("SELECT * FROM billing_ledger WHERE organization_id = ? ORDER BY created_at DESC LIMIT 100").all(req.user!.organizationId);
+  const rows = db.prepare("SELECT * FROM billing_ledger WHERE organization_id = ? ORDER BY created_at DESC LIMIT 100").all(req.user!.organizationId) as any[];
+  const entries = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    description: r.description,
+    amount: r.amount,
+    balance: r.balance,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
   return res.json({ entries });
 });
 
@@ -46,8 +55,18 @@ router.get("/customer/billing/dvnet-transactions", (_req: Request, res: Response
 router.get("/customer/invoices", (req: Request, res: Response) => {
   const page = parseInt(req.query.page as string) || 1;
   const pageSize = parseInt(req.query.pageSize as string) || 20;
-  const invoices = db.prepare("SELECT * FROM invoices WHERE organization_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?")
-    .all(req.user!.organizationId, pageSize, (page - 1) * pageSize);
+  const rows = db.prepare("SELECT * FROM invoices WHERE organization_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?")
+    .all(req.user!.organizationId, pageSize, (page - 1) * pageSize) as any[];
+  const invoices = rows.map((r) => ({
+    id: r.id,
+    invoiceNumber: r.invoice_number,
+    status: r.status,
+    totalAmount: r.total_amount,
+    currency: r.currency,
+    dueDate: r.due_date || r.created_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
   return res.json({ invoices });
 });
 

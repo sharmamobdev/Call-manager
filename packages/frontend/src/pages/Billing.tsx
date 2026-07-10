@@ -64,7 +64,7 @@ export default function Billing() {
               <div key={inv.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                 <div>
                   <p className="text-sm font-medium text-gray-700">{inv.invoiceNumber}</p>
-                  <p className="text-xs text-gray-400">{formatDate(inv.dueDate)}</p>
+                  <p className="text-xs text-gray-400">{formatDate(inv.createdAt)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium text-gray-700">{formatCurrency(inv.totalAmount)}</p>
