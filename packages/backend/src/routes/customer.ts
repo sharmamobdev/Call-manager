@@ -102,9 +102,11 @@ router.post("/customer/numbers/buy", async (req: Request, res: Response) => {
 });
 
 router.patch("/customer/numbers/:id", (req: Request, res: Response) => {
+  const allowed = new Set(["friendlyName", "campaignId", "callVendorId", "isActive", "ivrConfig"]);
   const sets: string[] = [];
   const params: any[] = [];
   for (const [key, value] of Object.entries(req.body)) {
+    if (!allowed.has(key)) continue;
     const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
     sets.push(`${col} = ?`);
     params.push(value);
@@ -167,6 +169,10 @@ router.post("/customer/numbers/:id/configure-webhook", async (req: Request, res:
 });
 
 router.get("/customer/campaigns", (req: Request, res: Response) => {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDayMs = startOfDay.getTime();
+
   const rows = db.prepare(`
     SELECT c.*,
       GROUP_CONCAT(DISTINCT b.name) as buyer_names,
@@ -180,21 +186,54 @@ router.get("/customer/campaigns", (req: Request, res: Response) => {
     GROUP BY c.id
     ORDER BY c.created_at DESC
   `).all(req.user!.organizationId) as any[];
-  const campaigns = rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    description: r.description,
-    status: r.status,
-    useCase: r.use_case,
-    sampleMessages: r.sample_messages ? JSON.parse(r.sample_messages) : [],
-    monthlyVolume: r.monthly_volume,
-    isActive: !!r.is_active,
-    buyerNames: r.buyer_names || null,
-    buyerPhones: r.buyer_phones || null,
-    didNumbers: r.did_numbers || null,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  }));
+
+  const campaigns = rows.map((r) => {
+    // Compute todayCC: sum of active calls across linked buyers
+    let todayCC = 0;
+    if (r.buyer_phones) {
+      const phones = r.buyer_phones.split(",").filter(Boolean);
+      if (phones.length > 0) {
+        const placeholders = phones.map(() => "?").join(",");
+        const ccRow = db.prepare(`SELECT COUNT(*) as cc FROM cdrs WHERE buyer_number IN (${placeholders}) AND status IN ('ringing', 'in-progress') AND call_date >= ?`).get(...phones, startOfDayMs) as any;
+        todayCC = ccRow?.cc || 0;
+      }
+    }
+
+    // Compute totalCap: sum of linked buyers' daily_caps (>0 only)
+    let totalCap = 0;
+    if (r.buyer_phones) {
+      const phones = r.buyer_phones.split(",").filter(Boolean);
+      if (phones.length > 0) {
+        const placeholders = phones.map(() => "?").join(",");
+        const capRow = db.prepare(`SELECT COALESCE(SUM(daily_cap), 0) as cap FROM buyers WHERE phone IN (${placeholders}) AND daily_cap > 0`).get(...phones) as any;
+        totalCap = capRow?.cap || 0;
+      }
+    }
+    // If campaign has its own daily_cap, use min of campaign cap and buyer sum
+    if (r.daily_cap > 0) {
+      totalCap = totalCap > 0 ? Math.min(r.daily_cap, totalCap) : r.daily_cap;
+    }
+
+    return {
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      status: r.status,
+      useCase: r.use_case,
+      sampleMessages: r.sample_messages ? JSON.parse(r.sample_messages) : [],
+      monthlyVolume: r.monthly_volume,
+      isActive: !!r.is_active,
+      buyerNames: r.buyer_names || null,
+      buyerPhones: r.buyer_phones || null,
+      didNumbers: r.did_numbers || null,
+      duplicateHandling: r.duplicate_handling || "same_buyer",
+      dailyCap: r.daily_cap || 0,
+      todayCC,
+      totalCap,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  });
   return res.json({ campaigns });
 });
 
@@ -218,20 +257,22 @@ router.get("/customer/campaigns/:id", (req: Request, res: Response) => {
 });
 
 router.post("/customer/campaigns", (req: Request, res: Response) => {
-  const { name, description, useCase, sampleMessages, monthlyVolume } = req.body;
+  const { name, description, useCase, sampleMessages, monthlyVolume, duplicateHandling, dailyCap } = req.body;
   const id = crypto.randomUUID();
   const now = Date.now();
-  db.prepare(`INSERT INTO campaigns (id, name, description, organization_id, use_case, sample_messages, monthly_volume, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, description || null, req.user!.organizationId, useCase || null, JSON.stringify(sampleMessages || []), monthlyVolume || 0, now, now);
+  db.prepare(`INSERT INTO campaigns (id, name, description, organization_id, use_case, sample_messages, monthly_volume, duplicate_handling, daily_cap, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, description || null, req.user!.organizationId, useCase || null, JSON.stringify(sampleMessages || []), monthlyVolume || 0, duplicateHandling || "same_buyer", dailyCap || 0, now, now);
   return res.json({ campaign: { id, name, description, useCase } });
 });
 
 router.patch("/customer/campaigns/:id", (req: Request, res: Response) => {
+  const allowed = new Set(["name", "description", "status", "useCase", "duplicateHandling", "dailyCap"]);
   const sets: string[] = [];
   const params: any[] = [];
   for (const [key, value] of Object.entries(req.body)) {
-    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    if (!allowed.has(key)) continue;
     if (value === undefined) continue;
+    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
     sets.push(`${col} = ?`);
     params.push(value);
   }
@@ -288,20 +329,31 @@ function mapBuyer(r: any) {
     phone: r.phone,
     description: r.description,
     isActive: !!r.is_active,
+    dailyCap: r.daily_cap || 0,
+    maxConcurrent: r.max_concurrent || 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
 
 router.get("/customer/buyers", (req: Request, res: Response) => {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDayMs = startOfDay.getTime();
+
   const rows = db.prepare(`
     SELECT b.*,
-      (SELECT COUNT(*) FROM campaign_buyers cb WHERE cb.buyer_id = b.id) as campaign_count
+      (SELECT COUNT(*) FROM campaign_buyers cb WHERE cb.buyer_id = b.id) as campaign_count,
+      (SELECT COUNT(*) FROM cdrs WHERE buyer_number = b.phone AND status IN ('ringing', 'in-progress') AND call_date >= ?) as today_cc
     FROM buyers b
     WHERE b.organization_id = ?
     ORDER BY b.created_at DESC
-  `).all(req.user!.organizationId) as any[];
-  return res.json({ buyers: rows.map((r) => ({ ...mapBuyer(r), campaignCount: r.campaign_count || 0 })) });
+  `).all(startOfDayMs, req.user!.organizationId) as any[];
+  if (rows.length > 0) {
+    const sample = rows[0];
+    console.log(`[GET /customer/buyers] org=${req.user!.organizationId} count=${rows.length} sample: id=${sample.id} daily_cap=${sample.daily_cap} max_concurrent=${sample.max_concurrent} today_cc=${sample.today_cc}`);
+  }
+  return res.json({ buyers: rows.map((r) => ({ ...mapBuyer(r), campaignCount: r.campaign_count || 0, todayCC: r.today_cc || 0 })) });
 });
 
 router.get("/customer/buyers/:id", (req: Request, res: Response) => {
@@ -326,21 +378,23 @@ router.get("/customer/buyers/:id", (req: Request, res: Response) => {
 });
 
 router.post("/customer/buyers", (req: Request, res: Response) => {
-  const { name, email, phone, description } = req.body;
+  const { name, email, phone, description, dailyCap, maxConcurrent } = req.body;
   const normalizedPhone = normalizePhone(phone);
   const id = crypto.randomUUID();
   const now = Date.now();
-  db.prepare(`INSERT INTO buyers (id, name, email, phone, description, organization_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, normalizedPhone, description || null, req.user!.organizationId, now, now);
+  db.prepare(`INSERT INTO buyers (id, name, email, phone, description, daily_cap, max_concurrent, organization_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, normalizedPhone, description || null, dailyCap || 0, maxConcurrent || 0, req.user!.organizationId, now, now);
   return res.json({ buyer: { id, name, email, phone: normalizedPhone } });
 });
 
 router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
+  const allowed = new Set(["name", "email", "phone", "description", "dailyCap", "maxConcurrent"]);
   const sets: string[] = [];
   const params: any[] = [];
   for (const [key, value] of Object.entries(req.body)) {
-    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+    if (!allowed.has(key)) continue;
     if (value === undefined) continue;
+    const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
     if (col === "phone") {
       params.push(normalizePhone(value as string));
     } else {
@@ -351,7 +405,8 @@ router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
   if (!sets.length) return res.status(400).json({ error: "No fields to update" });
   sets.push("updated_at = ?");
   params.push(Date.now(), req.params.id, req.user!.organizationId);
-  db.prepare(`UPDATE buyers SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`).run(...params);
+  const result = db.prepare(`UPDATE buyers SET ${sets.join(", ")} WHERE id = ? AND organization_id = ?`).run(...params);
+  console.log(`[PATCH /customer/buyers/${req.params.id}] sets=${sets.join(", ")} result.changes=${result.changes}`);
   return res.json({ success: true });
 });
 

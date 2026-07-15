@@ -276,7 +276,32 @@ export function createTables() {
   try { db.prepare("ALTER TABLE cdrs ADD COLUMN routing_attempt INTEGER").run(); } catch (_) {}
   try { db.prepare("ALTER TABLE cdrs ADD COLUMN buyer_name TEXT").run(); } catch (_) {}
   try { db.prepare("ALTER TABLE cdrs ADD COLUMN campaign_name TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE buyers ADD COLUMN daily_cap INTEGER DEFAULT 0").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE buyers ADD COLUMN max_concurrent INTEGER DEFAULT 0").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE campaigns ADD COLUMN duplicate_handling TEXT DEFAULT 'same_buyer'").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE campaigns ADD COLUMN daily_cap INTEGER DEFAULT 0").run(); } catch (_) {}
 
   saveDatabase();
   console.log("Database tables created successfully");
+
+  // Verify critical columns exist
+  try {
+    const buyerCols = db.prepare("PRAGMA table_info(buyers)").all() as any[];
+    const colNames = buyerCols.map((c: any) => c.name);
+    const hasDailyCap = colNames.includes("daily_cap");
+    const hasMaxConcurrent = colNames.includes("max_concurrent");
+    const hasPhone = colNames.includes("phone");
+    console.log(`[DB Verify] buyers columns: phone=${hasPhone} daily_cap=${hasDailyCap} max_concurrent=${hasMaxConcurrent} (all: ${colNames.join(", ")})`);
+    if (!hasDailyCap || !hasMaxConcurrent || !hasPhone) {
+      console.error("[DB Verify] WARNING: Missing critical buyers columns! Running forced migrations...");
+      try { db.prepare("ALTER TABLE buyers ADD COLUMN phone TEXT").run(); } catch (_) {}
+      try { db.prepare("ALTER TABLE buyers ADD COLUMN daily_cap INTEGER DEFAULT 0").run(); } catch (_) {}
+      try { db.prepare("ALTER TABLE buyers ADD COLUMN max_concurrent INTEGER DEFAULT 0").run(); } catch (_) {}
+      saveDatabase();
+      const retryCols = db.prepare("PRAGMA table_info(buyers)").all() as any[];
+      console.log(`[DB Verify] After forced migration: ${retryCols.map((c: any) => c.name).join(", ")}`);
+    }
+  } catch (err: any) {
+    console.error("[DB Verify] Schema verification failed:", err.message);
+  }
 }

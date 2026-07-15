@@ -93,14 +93,44 @@ router.post("/webhook/voice/retry/:campaignId/:buyerIndex/:cdrId", (req: Request
   const cdrId = req.params.cdrId;
   const callSid = req.body.CallSid;
 
-  const buyers = db.prepare(`
-    SELECT b.id, b.name, b.phone
+  const campaign = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(campaignId) as any;
+
+  const allBuyers = db.prepare(`
+    SELECT b.id, b.name, b.phone, b.daily_cap, b.max_concurrent
     FROM buyers b
     INNER JOIN campaign_buyers cb ON cb.buyer_id = b.id
     WHERE cb.campaign_id = ?
       AND b.phone IS NOT NULL AND b.phone != ''
     ORDER BY cb.routing_order ASC, b.name ASC
   `).all(campaignId) as any[];
+
+  // Apply same filtering as main webhook
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDayMs = startOfDay.getTime();
+
+  // Duplicate handling
+  let excludedBuyerPhones: string[] = [];
+  if (campaign?.duplicate_handling === "different_buyer" && cdrId) {
+    const existingCdr = db.prepare("SELECT from_number FROM cdrs WHERE id = ?").get(cdrId) as any;
+    if (existingCdr?.from_number) {
+      const prevCdr = db.prepare(`SELECT buyer_number FROM cdrs WHERE from_number = ? AND campaign_name = ? AND buyer_number IS NOT NULL ORDER BY call_date DESC LIMIT 1`).get(existingCdr.from_number, campaign.name) as any;
+      if (prevCdr?.buyer_number) excludedBuyerPhones.push(prevCdr.buyer_number);
+    }
+  }
+
+  const buyers = allBuyers.filter((b) => {
+    if (excludedBuyerPhones.includes(b.phone)) return false;
+    if (b.daily_cap > 0) {
+      const cnt = db.prepare(`SELECT COUNT(*) as cnt FROM cdrs WHERE buyer_number = ? AND status = 'completed' AND call_date >= ?`).get(b.phone, startOfDayMs) as any;
+      if (cnt && cnt.cnt >= b.daily_cap) return false;
+    }
+    if (b.max_concurrent > 0) {
+      const cnt = db.prepare(`SELECT COUNT(*) as cnt FROM cdrs WHERE buyer_number = ? AND status IN ('ringing', 'in-progress') AND call_date >= ?`).get(b.phone, startOfDayMs) as any;
+      if (cnt && cnt.cnt >= b.max_concurrent) return false;
+    }
+    return true;
+  });
 
   const number = db.prepare("SELECT e164, organization_id FROM numbers WHERE campaign_id = ?").get(campaignId) as any;
 
@@ -165,11 +195,23 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
     campaign = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(campaignId) as any;
   }
 
+  // Check campaign daily cap
+  if (campaign && campaign.daily_cap > 0) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const capRow = db.prepare(`SELECT COUNT(*) as cnt FROM cdrs WHERE campaign_name = ? AND status = 'completed' AND call_date >= ?`).get(campaign.name, startOfDay.getTime()) as any;
+    if (capRow && capRow.cnt >= campaign.daily_cap) {
+      console.log(`[Webhook] Campaign daily cap reached — campaign=${campaign.name}, cap=${campaign.daily_cap}`);
+      res.setHeader("Content-Type", "text/xml");
+      return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="male">Sorry, this campaign has reached its daily call limit. Please try again tomorrow.</Say><Hangup/></Response>`);
+    }
+  }
+
   // Find buyers ordered by routing_order
   let buyers: any[] = [];
   if (campaignId) {
     buyers = db.prepare(`
-      SELECT b.id, b.name, b.phone
+      SELECT b.id, b.name, b.phone, b.daily_cap, b.max_concurrent
       FROM buyers b
       INNER JOIN campaign_buyers cb ON cb.buyer_id = b.id
       WHERE cb.campaign_id = ?
@@ -178,8 +220,48 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
     `).all(campaignId) as any[];
   }
 
+  // Duplicate handling: if different_buyer, find previous buyer and exclude
+  let excludedBuyerPhones: string[] = [];
+  if (campaign && campaign.duplicate_handling === "different_buyer" && from) {
+    const prevCdr = db.prepare(`SELECT buyer_number FROM cdrs WHERE from_number = ? AND campaign_name = ? AND buyer_number IS NOT NULL ORDER BY call_date DESC LIMIT 1`).get(from, campaign.name) as any;
+    if (prevCdr?.buyer_number) {
+      excludedBuyerPhones.push(prevCdr.buyer_number);
+      console.log(`[Webhook] Duplicate handling — excluding previous buyer ${prevCdr.buyer_number} for caller ${from}`);
+    }
+  }
+
+  // Filter buyers by daily cap, max concurrent, and duplicate handling
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDayMs = startOfDay.getTime();
+
+  const eligibleBuyers = buyers.filter((b) => {
+    // Exclude previous buyer for duplicate handling
+    if (excludedBuyerPhones.includes(b.phone)) return false;
+
+    // Check daily cap
+    if (b.daily_cap > 0) {
+      const cnt = db.prepare(`SELECT COUNT(*) as cnt FROM cdrs WHERE buyer_number = ? AND status = 'completed' AND call_date >= ?`).get(b.phone, startOfDayMs) as any;
+      if (cnt && cnt.cnt >= b.daily_cap) {
+        console.log(`[Webhook] Buyer daily cap reached — buyer=${b.name}, phone=${b.phone}, cap=${b.daily_cap}`);
+        return false;
+      }
+    }
+
+    // Check max concurrent
+    if (b.max_concurrent > 0) {
+      const cnt = db.prepare(`SELECT COUNT(*) as cnt FROM cdrs WHERE buyer_number = ? AND status IN ('ringing', 'in-progress') AND call_date >= ?`).get(b.phone, startOfDayMs) as any;
+      if (cnt && cnt.cnt >= b.max_concurrent) {
+        console.log(`[Webhook] Buyer max concurrent reached — buyer=${b.name}, phone=${b.phone}, max=${b.max_concurrent}`);
+        return false;
+      }
+    }
+
+    return true;
+  });
+
   const campaignName = campaign?.name || null;
-  const firstBuyerName = buyers[0]?.name || null;
+  const firstBuyerName = eligibleBuyers[0]?.name || null;
 
   // Create CDR
   const cdrId = uid();
@@ -190,7 +272,7 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
   broadcastCdrEvent({
     type: "call-start",
     organizationId: orgId,
-    cdr: { id: cdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: "ringing", duration: 0, cost: 0, callDate: now, buyerName: firstBuyerName || undefined, buyerNumber: buyers[0]?.phone || undefined, campaignName: campaignName || undefined },
+    cdr: { id: cdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: "ringing", duration: 0, cost: 0, callDate: now, buyerName: firstBuyerName || undefined, buyerNumber: eligibleBuyers[0]?.phone || undefined, campaignName: campaignName || undefined },
   });
 
   const strategy = campaign?.routing_strategy || "sequential";
@@ -198,14 +280,14 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/xml");
   let twiml = `<?xml version="1.0" encoding="UTF-8"?><Response>`;
 
-  if (buyers.length > 0) {
+  if (eligibleBuyers.length > 0) {
     if (strategy === "concurrent") {
       // Store first buyer number in CDR for display
-      if (buyers[0]?.phone) {
-        db.prepare("UPDATE cdrs SET buyer_number = ? WHERE id = ?").run(buyers[0].phone, cdrId);
+      if (eligibleBuyers[0]?.phone) {
+        db.prepare("UPDATE cdrs SET buyer_number = ? WHERE id = ?").run(eligibleBuyers[0].phone, cdrId);
       }
       twiml += `<Dial timeout="25" answerOnBridge="true" machineDetection="DetectMessageEnd" record="record-from-ringing" recordingStatusCallback="${escapeXml(twilioBaseUrl(req) + "/webhook/recording-status")}" action="${escapeXml(twilioBaseUrl(req) + `/webhook/voice/dial-result?cdrId=${cdrId}&currentBuyerIndex=0&campaignId=${campaignId || ""}&orgId=${orgId}`)}">`;
-      for (const buyer of buyers) {
+      for (const buyer of eligibleBuyers) {
         twiml += `<Number>${escapeXml(buyer.phone)}</Number>`;
       }
       twiml += `</Dial>`;
@@ -215,9 +297,9 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
       if (strategy === "round_robin") {
         const key = `rr_${campaignId}`;
         const lastIndex = parseInt(req.body[key] || "0");
-        buyerIndex = lastIndex % buyers.length;
+        buyerIndex = lastIndex % eligibleBuyers.length;
       }
-      const buyer = buyers[buyerIndex];
+      const buyer = eligibleBuyers[buyerIndex];
       // Store buyer number in CDR for display
       if (buyer?.phone) {
         db.prepare("UPDATE cdrs SET buyer_number = ? WHERE id = ?").run(buyer.phone, cdrId);

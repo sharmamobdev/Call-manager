@@ -3,7 +3,7 @@ import { useAuthStore } from "../lib/auth";
 import { cn } from "../lib/utils";
 import {
   LayoutDashboard, Phone, Megaphone, PhoneCall, Receipt, Radio,
-  BarChart3, Users, Settings, LogOut, Menu, X, Satellite,
+  Users, Settings, LogOut, Menu, X, Satellite,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -15,7 +15,7 @@ const navItems = [
   { href: "/live-calls", label: "Live Calls", icon: Radio },
   { href: "/call-logs", label: "Call Logs", icon: PhoneCall },
   { href: "/billing", label: "Billing", icon: Receipt },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

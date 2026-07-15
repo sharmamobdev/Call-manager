@@ -8,7 +8,7 @@ import Campaigns from "./pages/Campaigns";
 import CallLogs from "./pages/CallLogs";
 import LiveCalls from "./pages/LiveCalls";
 import Billing from "./pages/Billing";
-import Reports from "./pages/Reports";
+
 import Buyers from "./pages/Buyers";
 import Settings from "./pages/Settings";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -40,7 +40,7 @@ export default function App() {
         <Route path="live-calls" element={<LiveCalls />} />
         <Route path="call-logs" element={<CallLogs />} />
         <Route path="billing" element={<Billing />} />
-        <Route path="reports" element={<Reports />} />
+
         <Route path="buyers" element={<Buyers />} />
         <Route path="settings" element={<Settings />} />
         <Route path="admin" element={<AdminDashboard />} />

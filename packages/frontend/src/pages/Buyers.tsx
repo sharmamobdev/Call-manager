@@ -9,8 +9,8 @@ export default function Buyers() {
   const [showCreate, setShowCreate] = useState(false);
   const [editBuyer, setEditBuyer] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", description: "" });
-  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", description: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", description: "", dailyCap: 0, maxConcurrent: 0 });
+  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", description: "", dailyCap: 0, maxConcurrent: 0 });
   const [search, setSearch] = useState("");
 
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -51,7 +51,7 @@ export default function Buyers() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buyers"] });
       setShowCreate(false);
-      setForm({ name: "", email: "", phone: "", description: "" });
+      setForm({ name: "", email: "", phone: "", description: "", dailyCap: 0, maxConcurrent: 0 });
       toast.success("Buyer added");
     },
     onError: (err: any) => toast.error(err.response?.data?.error || "Failed to add buyer"),
@@ -132,7 +132,7 @@ export default function Buyers() {
 
   function openEdit(buyer: any) {
     setEditBuyer(buyer);
-    setEditForm({ name: buyer.name || "", email: buyer.email || "", phone: buyer.phone || "", description: buyer.description || "" });
+    setEditForm({ name: buyer.name || "", email: buyer.email || "", phone: buyer.phone || "", description: buyer.description || "", dailyCap: buyer.dailyCap || 0, maxConcurrent: buyer.maxConcurrent || 0 });
   }
 
   return (
@@ -146,11 +146,11 @@ export default function Buyers() {
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Search buyers..."
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1] outline-none"
+          className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1] outline-none"
         />
       </div>
 
@@ -160,28 +160,40 @@ export default function Buyers() {
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">New Buyer</h3>
-              <button onClick={() => setShowCreate(false)} className="p-1 hover:bg-gray-100 rounded"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowCreate(false)} className="p-1 hover:bg-slate-100 rounded"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
                 <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="Buyer name" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="Buyer name" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="buyer@example.com" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="buyer@example.com" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                 <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="+15551234567" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="+15551234567" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
                 <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" rows={2} placeholder="Optional" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" rows={2} placeholder="Optional" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Daily Cap</label>
+                  <input type="number" min="0" value={form.dailyCap} onChange={(e) => setForm({ ...form, dailyCap: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="0 = Unlimited" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Max Concurrent</label>
+                  <input type="number" min="0" value={form.maxConcurrent} onChange={(e) => setForm({ ...form, maxConcurrent: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="0 = Unlimited" />
+                </div>
               </div>
               <button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.name}
                 className="w-full py-2.5 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors disabled:opacity-50">
@@ -198,46 +210,58 @@ export default function Buyers() {
           <div className="bg-white rounded-xl p-6 w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Edit Buyer</h3>
-              <button onClick={() => setEditBuyer(null)} className="p-1 hover:bg-gray-100 rounded"><X className="w-5 h-5" /></button>
+              <button onClick={() => setEditBuyer(null)} className="p-1 hover:bg-slate-100 rounded"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
                 <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                 <input type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                 <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="+15551234567" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="+15551234567" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
                 <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" rows={2} />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" rows={2} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Daily Cap</label>
+                  <input type="number" min="0" value={editForm.dailyCap} onChange={(e) => setEditForm({ ...editForm, dailyCap: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="0 = Unlimited" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Max Concurrent</label>
+                  <input type="number" min="0" value={editForm.maxConcurrent} onChange={(e) => setEditForm({ ...editForm, maxConcurrent: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="0 = Unlimited" />
+                </div>
               </div>
               <button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || !editForm.name}
                 className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors disabled:opacity-50">
                 <Save className="w-4 h-4" /> {updateMutation.isPending ? "Saving..." : "Save Changes"}
               </button>
 
-              <hr className="border-gray-200" />
+              <hr className="border-slate-200" />
 
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Link className="w-4 h-4" /> Linked Campaigns</h4>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2"><Link className="w-4 h-4" /> Linked Campaigns</h4>
                 {groupedCampaigns.length === 0 ? (
-                  <p className="text-xs text-gray-400 mb-2">Not linked to any campaigns</p>
+                  <p className="text-xs text-slate-400 mb-2">Not linked to any campaigns</p>
                 ) : (
                   <div className="space-y-1.5 mb-3">
                     {groupedCampaigns.map((c: any) => (
-                      <div key={c.link_id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-sm text-gray-700">{c.campaign_name}</span>
-                        <button onClick={() => unlinkCampaignMutation.mutate(c.link_id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                      <div key={c.link_id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                        <span className="text-sm text-slate-700">{c.campaign_name}</span>
+                        <button onClick={() => unlinkCampaignMutation.mutate(c.link_id)} className="p-1 text-slate-400 hover:text-red-500 rounded">
                           <Unlink className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -247,7 +271,7 @@ export default function Buyers() {
                 {campaigns.filter((c: any) => !linkedCampaignIds.includes(c.id)).length > 0 && (
                   <div className="flex gap-2">
                     <select id="link-campaign"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
                       <option value="">-- Select campaign --</option>
                       {campaigns.filter((c: any) => !linkedCampaignIds.includes(c.id)).map((c: any) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
@@ -255,31 +279,31 @@ export default function Buyers() {
                     </select>
                     <button onClick={() => { const sel = (document.getElementById("link-campaign") as HTMLSelectElement)?.value; if (sel) linkCampaignMutation.mutate(sel); }}
                       disabled={linkCampaignMutation.isPending}
-                      className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">
+                      className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors disabled:opacity-50">
                       Link
                     </button>
                   </div>
                 )}
               </div>
 
-              <hr className="border-gray-200" />
+              <hr className="border-slate-200" />
 
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Groups</h4>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Groups</h4>
                 {groupedGroups.length === 0 ? (
-                  <p className="text-xs text-gray-400">Not in any groups</p>
+                  <p className="text-xs text-slate-400">Not in any groups</p>
                 ) : (
                   <div className="space-y-1.5">
                     {groupedGroups.map((g: any) => (
-                      <div key={g.membership_id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-sm text-gray-700">{g.group_name}</span>
+                      <div key={g.membership_id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                        <span className="text-sm text-slate-700">{g.group_name}</span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              <hr className="border-gray-200" />
+              <hr className="border-slate-200" />
 
               <button onClick={() => setDeleteConfirm(editBuyer.id)}
                 className="flex items-center justify-center gap-2 w-full py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
@@ -295,9 +319,9 @@ export default function Buyers() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setDeleteConfirm(null)}>
           <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-2">Delete Buyer?</h3>
-            <p className="text-sm text-gray-500 mb-4">This will also remove them from all campaigns and groups.</p>
+            <p className="text-sm text-slate-500 mb-4">This will also remove them from all campaigns and groups.</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">Cancel</button>
               <button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
                 {deleteMutation.isPending ? "Deleting..." : "Delete"}
@@ -308,65 +332,71 @@ export default function Buyers() {
       )}
 
       {/* Buyers Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Buyer</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Phone</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Campaigns</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((buyer: any) => (
-              <tr key={buyer.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => openEdit(buyer)}>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-[#1985A1]" />
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">{buyer.name}</span>
-                      {buyer.email && <div className="text-xs text-gray-500">{buyer.email}</div>}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed">
+            <thead>
+              <tr className="sticky top-0 border-b border-slate-200 bg-slate-50">
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap w-[180px]">Name</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap w-[130px]">Phone</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap">Description</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap w-[80px]">Campaigns</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap w-[85px]">Daily Cap</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap w-[75px]">CC</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-slate-500 uppercase whitespace-nowrap w-[70px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((buyer: any) => (
+                <tr key={buyer.id} className="border-b border-slate-100 hover:bg-slate-50/50 cursor-pointer" onClick={() => openEdit(buyer)}>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-[#1985A1] shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-slate-800 truncate block">{buyer.name}</span>
+                        {buyer.email && <div className="text-xs text-slate-500 truncate">{buyer.email}</div>}
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{buyer.phone || "-"}</td>
-                <td className="px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate">{buyer.description || "-"}</td>
-                <td className="px-4 py-3">
-                  <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-                    {buyer.campaignCount || 0}
-                  </span>
-                </td>
-                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => openEdit(buyer)}
-                      className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg transition-colors">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => setDeleteConfirm(buyer.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                  No buyers found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  </td>
+                  <td className="px-3 py-2 text-sm text-slate-600 truncate">{buyer.phone || "-"}</td>
+                  <td className="px-3 py-2 text-sm text-slate-600 truncate">{buyer.description || "-"}</td>
+                  <td className="px-3 py-2">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      {buyer.campaignCount || 0}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-sm text-slate-600">{buyer.dailyCap > 0 ? buyer.dailyCap : "Unlimited"}</td>
+                  <td className="px-3 py-2 text-sm text-slate-600">{buyer.todayCC || 0}</td>
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEdit(buyer)}
+                        className="p-1.5 text-slate-400 hover:text-[#1985A1] hover:bg-slate-100 rounded-lg transition-colors">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setDeleteConfirm(buyer.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-lg transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                    No buyers found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Buyer Groups Section */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Buyer Groups</h3>
+          <h3 className="text-lg font-semibold text-slate-800">Buyer Groups</h3>
           <button onClick={() => setShowGroupModal(true)}
             className="flex items-center gap-2 px-3 py-1.5 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors">
             <FolderPlus className="w-4 h-4" /> New Group
@@ -374,7 +404,7 @@ export default function Buyers() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {groups.map((g: any) => (
-            <div key={g.id} className="border border-gray-200 rounded-lg p-4 hover:border-[#1985A1]/30 transition-colors cursor-pointer"
+            <div key={g.id} className="border border-slate-200 rounded-lg p-4 hover:border-[#1985A1]/30 transition-colors cursor-pointer"
               onClick={() => { if (editingGroupId !== g.id) setGroupDetail(g); }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -382,30 +412,30 @@ export default function Buyers() {
                   {editingGroupId === g.id ? (
                     <div className="flex items-center gap-1 flex-1">
                       <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]"
+                        className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]"
                         onClick={(e) => e.stopPropagation()} autoFocus />
                       <button onClick={(e) => { e.stopPropagation(); renameGroupMutation.mutate({ id: g.id, name: editingGroupName }); }}
                         className="p-1 text-green-600 hover:bg-green-50 rounded"><Check className="w-4 h-4" /></button>
                       <button onClick={(e) => { e.stopPropagation(); setEditingGroupId(null); }}
-                        className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+                        className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X className="w-4 h-4" /></button>
                     </div>
                   ) : (
-                    <span className="text-sm font-medium text-gray-800 truncate">{g.name}</span>
+                    <span className="text-sm font-medium text-slate-800 truncate">{g.name}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {editingGroupId !== g.id && (
                     <button onClick={(e) => { e.stopPropagation(); setEditingGroupId(g.id); setEditingGroupName(g.name); }}
-                      className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg">
+                      className="p-1.5 text-slate-400 hover:text-[#1985A1] hover:bg-slate-100 rounded-lg">
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                 </div>
               </div>
             </div>
           ))}
-          {groups.length === 0 && <p className="text-sm text-gray-400 col-span-full">No groups configured</p>}
+          {groups.length === 0 && <p className="text-sm text-slate-400 col-span-full">No groups configured</p>}
         </div>
       </div>
 
@@ -415,13 +445,13 @@ export default function Buyers() {
           <div className="bg-white rounded-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">New Buyer Group</h3>
-              <button onClick={() => setShowGroupModal(false)} className="p-1 hover:bg-gray-100 rounded"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowGroupModal(false)} className="p-1 hover:bg-slate-100 rounded"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Group Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Group Name</label>
                 <input type="text" value={groupForm.name} onChange={(e) => setGroupForm({ name: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="e.g. VIP Buyers" />
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" placeholder="e.g. VIP Buyers" />
               </div>
               <button onClick={() => createGroupMutation.mutate()} disabled={createGroupMutation.isPending || !groupForm.name}
                 className="w-full py-2.5 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors disabled:opacity-50">
@@ -438,35 +468,35 @@ export default function Buyers() {
           <div className="bg-white rounded-xl p-6 w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Group: {groupDetail.name}</h3>
-              <button onClick={() => setGroupDetail(null)} className="p-1 hover:bg-gray-100 rounded"><X className="w-5 h-5" /></button>
+              <button onClick={() => setGroupDetail(null)} className="p-1 hover:bg-slate-100 rounded"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Members ({groupMembers.length})</h4>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Members ({groupMembers.length})</h4>
                 <div className="space-y-1.5 mb-3">
                   {groupMembers.map((m: any) => (
-                    <div key={m.membership_id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <div key={m.membership_id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
                       <div>
-                        <span className="text-sm font-medium text-gray-700">{m.buyer_name}</span>
-                        <div className="text-xs text-gray-400">
+                        <span className="text-sm font-medium text-slate-700">{m.buyer_name}</span>
+                        <div className="text-xs text-slate-400">
                           {m.email && <span className="mr-3">{m.email}</span>}
                           {m.phone && <span>{m.phone}</span>}
                         </div>
                       </div>
                       <button onClick={() => removeMemberMutation.mutate(m.membership_id)}
-                        className="p-1 text-gray-400 hover:text-red-500 rounded">
+                        className="p-1 text-slate-400 hover:text-red-500 rounded">
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
-                  {groupMembers.length === 0 && <p className="text-xs text-gray-400">No members in this group</p>}
+                  {groupMembers.length === 0 && <p className="text-xs text-slate-400">No members in this group</p>}
                 </div>
 
                 {buyers.filter((b: any) => !groupMembers.find((m: any) => m.buyer_id === b.id)).length > 0 && (
                   <div className="flex gap-2">
                     <select id="add-member"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]">
                       <option value="">-- Add a buyer --</option>
                       {buyers.filter((b: any) => !groupMembers.find((m: any) => m.buyer_id === b.id)).map((b: any) => (
                         <option key={b.id} value={b.id}>{b.name}{b.phone ? ` (${b.phone})` : ""}</option>
@@ -474,18 +504,18 @@ export default function Buyers() {
                     </select>
                     <button onClick={() => { const sel = (document.getElementById("add-member") as HTMLSelectElement)?.value; if (sel) addMemberMutation.mutate(sel); }}
                       disabled={addMemberMutation.isPending}
-                      className="flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">
+                      className="flex items-center gap-1 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors disabled:opacity-50">
                       <UserPlus className="w-3.5 h-3.5" /> Add
                     </button>
                   </div>
                 )}
               </div>
 
-              <hr className="border-gray-200" />
+              <hr className="border-slate-200" />
 
               <button onClick={() => { setDeleteConfirm(null); deleteGroupMutation.mutate(groupDetail.id); }}
                 disabled={deleteGroupMutation.isPending}
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50">
+                className="flex items-center justify-center gap-2 w-full py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
                 <Trash2 className="w-4 h-4" /> {deleteGroupMutation.isPending ? "Deleting..." : "Delete Group"}
               </button>
             </div>
