@@ -131,6 +131,14 @@ export const signalwire = {
     return swFetch(`/Calls/${callSid}/Recordings.json`);
   },
 
+  // ── Hang up a call ──
+  async hangupCall(callSid: string) {
+    return swFetch(`/Calls/${callSid}.json`, {
+      method: "POST",
+      body: JSON.stringify({ Status: "completed" }),
+    });
+  },
+
   // ── List messages ──
   async getMessages(args?: { pageSize?: number; page?: number }) {
     const params: Record<string, string | number> = {};

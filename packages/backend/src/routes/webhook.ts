@@ -68,7 +68,7 @@ router.post("/webhook/voice/dial-result", (req: Request, res: Response) => {
     broadcastCdrEvent({
       type: isTerminal ? "call-end" : "call-update",
       organizationId: resolvedOrgId,
-      cdr: { id: cdrId || "", callSid, fromNumber: "", toNumber: "", direction: "inbound", status: resolvedStatus, duration: parseInt(dialCallDuration || "0"), cost: 0, callDate: Date.now() },
+      cdr: { id: cdrId || "", callSid, fromNumber: "", toNumber: "", direction: "inbound", status: resolvedStatus, duration: parseInt(dialCallDuration || "0"), cost: 0, callDate: Date.now(), reason, routingAttempt, answeredAt: answeredAt || undefined },
     });
   }
 
@@ -124,7 +124,7 @@ router.post("/webhook/voice/retry/:campaignId/:buyerIndex/:cdrId", (req: Request
       broadcastCdrEvent({
         type: "call-end",
         organizationId: number.organization_id,
-        cdr: { id: cdrId, callSid: req.body.CallSid, fromNumber: "", toNumber: "", direction: "inbound", status: "no-answer", duration: 0, cost: 0, callDate: Date.now() },
+        cdr: { id: cdrId, callSid: req.body.CallSid, fromNumber: "", toNumber: "", direction: "inbound", status: "no-answer", duration: 0, cost: 0, callDate: Date.now(), reason: "no-answer", routingAttempt: buyerIndex + 1 },
       });
     }
   }
@@ -190,7 +190,7 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
   broadcastCdrEvent({
     type: "call-start",
     organizationId: orgId,
-    cdr: { id: cdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: "ringing", duration: 0, cost: 0, callDate: now },
+    cdr: { id: cdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: "ringing", duration: 0, cost: 0, callDate: now, buyerName: firstBuyerName || undefined, buyerNumber: buyers[0]?.phone || undefined, campaignName: campaignName || undefined },
   });
 
   const strategy = campaign?.routing_strategy || "sequential";
@@ -276,7 +276,7 @@ router.post("/webhook/status", (req: Request, res: Response) => {
       broadcastCdrEvent({
         type: status === "completed" ? "call-end" : "call-update",
         organizationId: orgId,
-        cdr: { id: existing.id, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status, duration: dur, cost, callDate: existing.call_date },
+        cdr: { id: existing.id, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status, duration: dur, cost, callDate: existing.call_date, buyerName: existing.buyer_name || undefined, buyerNumber: existing.buyer_number || undefined, campaignName: existing.campaign_name || undefined, reason: callStatus || undefined, endedAt: Date.now() },
       });
 
       // Auto-debit from wallet if call is completed
@@ -299,7 +299,7 @@ router.post("/webhook/status", (req: Request, res: Response) => {
         broadcastCdrEvent({
           type: "call-end",
           organizationId: number.organization_id,
-          cdr: { id: newCdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: callStatus?.toLowerCase() || "completed", duration: parseInt(duration || "0"), cost: 0, callDate: now },
+          cdr: { id: newCdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: callStatus?.toLowerCase() || "completed", duration: parseInt(duration || "0"), cost: 0, callDate: now, reason: callStatus || undefined, endedAt: Date.now() },
         });
       }
     }
@@ -327,7 +327,7 @@ router.post("/webhook/recording-status", (req: Request, res: Response) => {
       broadcastCdrEvent({
         type: "call-update",
         organizationId: existing.organization_id,
-        cdr: { id: existing.id, callSid, fromNumber: existing.from_number, toNumber: existing.to_number, direction: "inbound", status: existing.status, duration: existing.duration, cost: existing.cost, callDate: existing.call_date },
+        cdr: { id: existing.id, callSid, fromNumber: existing.from_number, toNumber: existing.to_number, direction: "inbound", status: existing.status, duration: existing.duration, cost: existing.cost, callDate: existing.call_date, buyerName: existing.buyer_name || undefined, buyerNumber: existing.buyer_number || undefined, campaignName: existing.campaign_name || undefined },
       });
     }
   }

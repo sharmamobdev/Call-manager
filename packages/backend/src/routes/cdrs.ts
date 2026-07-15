@@ -144,6 +144,24 @@ router.get("/customer/live-calls", (req: Request, res: Response) => {
   return res.json({ calls: cdrs.map(mapCdr) });
 });
 
+// ── Hang up a live call via SignalWire ──
+router.post("/customer/calls/:callSid/hangup", async (req: Request, res: Response) => {
+  try {
+    const { callSid } = req.params;
+    const orgId = req.user!.organizationId;
+
+    // Verify the call belongs to this org
+    const cdr = db.prepare("SELECT id, organization_id FROM cdrs WHERE call_sid = ? AND organization_id = ?").get(callSid, orgId) as any;
+    if (!cdr) return res.status(404).json({ error: "Call not found" });
+
+    await signalwire.hangupCall(callSid);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error(`[Hangup] Error:`, err?.message);
+    return res.status(500).json({ error: "Failed to hang up call" });
+  }
+});
+
 router.get("/customer/cdrs/:id/recording", (req: Request, res: Response) => {
   const cdr = db.prepare("SELECT recording_url FROM cdrs WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId) as any;
   if (!cdr?.recording_url) return res.status(404).json({ error: "Recording not found" });

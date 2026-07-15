@@ -10,6 +10,13 @@ export interface LiveCall {
   duration: number;
   cost: number;
   callDate: number;
+  buyerName?: string;
+  buyerNumber?: string;
+  campaignName?: string;
+  reason?: string;
+  routingAttempt?: number;
+  answeredAt?: number;
+  endedAt?: number;
 }
 
 interface CdrEvent {

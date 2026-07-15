@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLiveCalls, LiveCall } from "../hooks/useLiveCalls";
 import { formatDateTime, formatDuration } from "../lib/utils";
-import { Radio, PhoneCall, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import api from "../lib/api";
+import { Radio, PhoneCall, PhoneOff } from "lucide-react";
 
 function useElapsed(start: number | undefined): number {
   const [elapsed, setElapsed] = useState(0);
@@ -16,27 +17,49 @@ function useElapsed(start: number | undefined): number {
 
 function LiveCallRow({ call }: { call: LiveCall }) {
   const elapsed = useElapsed(call.callDate);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const tta = call.answeredAt && call.callDate
+    ? Math.floor((call.answeredAt - call.callDate) / 1000)
+    : null;
+
+  const handleDisconnect = async () => {
+    if (!call.callSid || disconnecting) return;
+    setDisconnecting(true);
+    try {
+      await api.post(`/customer/calls/${call.callSid}/hangup`);
+    } catch {
+      setDisconnecting(false);
+    }
+  };
+
   return (
     <tr className="border-b border-yellow-100 hover:bg-yellow-50/30">
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          {call.direction === "inbound" ? (
-            <ArrowDownRight className="w-4 h-4 text-blue-500" />
-          ) : (
-            <ArrowUpRight className="w-4 h-4 text-purple-500" />
-          )}
-          <span className={`text-xs px-2 py-0.5 rounded-full ${call.direction === "inbound" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-            {call.direction}
-          </span>
-        </div>
-      </td>
-      <td className="px-4 py-3 text-sm font-medium text-gray-800">{call.fromNumber}</td>
-      <td className="px-4 py-3 text-sm font-medium text-gray-800">{call.toNumber}</td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3 text-sm text-gray-500 whitespace-nowrap">{formatDateTime(call.callDate)}</td>
+      <td className="px-3 py-3 text-sm font-medium text-gray-800">{call.fromNumber}</td>
+      <td className="px-3 py-3 text-sm text-gray-700">{call.toNumber}</td>
+      <td className="px-3 py-3 text-sm text-gray-700">{call.buyerName || "-"}</td>
+      <td className="px-3 py-3 text-sm text-gray-700">{call.buyerNumber || "-"}</td>
+      <td className="px-3 py-3 text-sm text-gray-700">{call.campaignName || "-"}</td>
+      <td className="px-3 py-3 text-sm text-gray-600">{tta != null ? formatDuration(tta) : "-"}</td>
+      <td className="px-3 py-3 text-sm font-mono text-gray-700">{formatDuration(elapsed)}</td>
+      <td className="px-3 py-3 text-sm text-gray-600">{tta != null ? formatDuration(tta) : "-"}</td>
+      <td className="px-3 py-3">
         <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 animate-pulse">{call.status}</span>
       </td>
-      <td className="px-4 py-3 text-sm text-gray-500">{formatDateTime(call.callDate)}</td>
-      <td className="px-4 py-3 text-sm font-mono text-gray-700">{formatDuration(elapsed)}</td>
+      <td className="px-3 py-3 text-sm text-gray-600">{call.reason || "-"}</td>
+      <td className="px-3 py-3 text-sm text-gray-600 text-center">{call.routingAttempt || "-"}</td>
+      <td className="px-3 py-3">
+        {call.callSid && (
+          <button
+            onClick={handleDisconnect}
+            disabled={disconnecting}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 transition-colors disabled:opacity-50"
+          >
+            <PhoneOff className="w-3 h-3" /> {disconnecting ? "Hanging up..." : "Disconnect"}
+          </button>
+        )}
+      </td>
     </tr>
   );
 }
@@ -73,12 +96,19 @@ export default function LiveCalls() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-yellow-100 bg-yellow-50/50">
-                  <th className="text-left px-4 py-2 text-xs font-medium text-yellow-700 uppercase">Direction</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-yellow-700 uppercase">From</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-yellow-700 uppercase">To</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-yellow-700 uppercase">Status</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-yellow-700 uppercase">Started</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-yellow-700 uppercase">Elapsed</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Call Start</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Caller ID</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">DID</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Buyer Name</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Buyer Number</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Campaign</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">TTA</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Duration</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Ring Time</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Status</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Reason</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Routing Attempt</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-yellow-700 uppercase whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody>
