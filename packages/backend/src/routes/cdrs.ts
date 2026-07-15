@@ -110,7 +110,7 @@ router.get("/customer/cdrs", (req: Request, res: Response) => {
   const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize as string) || 50));
   const { fromNumber, toNumber, direction, status } = req.query;
 
-  const conditions: string[] = ["organization_id = ?"];
+  const conditions: string[] = ["organization_id = ?", "status NOT IN ('ringing', 'in-progress')"];
   const params: any[] = [orgId];
 
   if (fromNumber) { conditions.push("from_number LIKE ?"); params.push(`%${fromNumber}%`); }
