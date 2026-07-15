@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../lib/api";
 import { formatDate, formatCurrency } from "../lib/utils";
-import { Plus, Megaphone, X, Edit2, Trash2, Save, Phone, Users, BarChart3 } from "lucide-react";
+import { Plus, Megaphone, X, Edit2, Trash2, Save, Phone, Users, BarChart3, Search } from "lucide-react";
+import toast from "react-hot-toast";
 
 const STATUS_OPTIONS = ["draft", "pending_review", "approved", "rejected", "active", "paused"];
 const statusColors: Record<string, string> = {
@@ -23,17 +24,10 @@ export default function Campaigns() {
   const [editForm, setEditForm] = useState({ name: "", description: "", useCase: "", status: "draft" });
   const [selectedNumberId, setSelectedNumberId] = useState("");
   const [selectedBuyerId, setSelectedBuyerId] = useState("");
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [search, setSearch] = useState("");
 
   const editCampaignRef = useRef(editCampaign);
   useEffect(() => { editCampaignRef.current = editCampaign; }, [editCampaign]);
-
-  useEffect(() => {
-    if (message) {
-      const t = setTimeout(() => setMessage(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [message]);
 
   const { data } = useQuery({
     queryKey: ["campaigns"],
@@ -70,9 +64,9 @@ export default function Campaigns() {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       setShowCreate(false);
       setForm({ name: "", description: "", useCase: "" });
-      setMessage({ type: "success", text: "Campaign created" });
+      toast.success("Campaign created");
     },
-    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to create campaign" }),
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to create campaign"),
   });
 
   const updateMutation = useMutation({
@@ -81,9 +75,9 @@ export default function Campaigns() {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-analytics"] });
       setEditCampaign(null);
-      setMessage({ type: "success", text: "Campaign saved" });
+      toast.success("Campaign saved");
     },
-    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to save campaign" }),
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to save campaign"),
   });
 
   const deleteMutation = useMutation({
@@ -91,9 +85,9 @@ export default function Campaigns() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       setDeleteConfirm(null);
-      setMessage({ type: "success", text: "Campaign deleted" });
+      toast.success("Campaign deleted");
     },
-    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to delete campaign" }),
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to delete campaign"),
   });
 
   const assignNumberMutation = useMutation({
@@ -105,9 +99,9 @@ export default function Campaigns() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["numbers"] });
       setSelectedNumberId("");
-      setMessage({ type: "success", text: "Number assigned" });
+      toast.success("Number assigned");
     },
-    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to assign number" }),
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to assign number"),
   });
 
   const linkBuyerMutation = useMutation({
@@ -119,18 +113,18 @@ export default function Campaigns() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaignRef.current?.id] });
       setSelectedBuyerId("");
-      setMessage({ type: "success", text: "Buyer linked" });
+      toast.success("Buyer linked");
     },
-    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to link buyer" }),
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to link buyer"),
   });
 
   const unlinkBuyerMutation = useMutation({
     mutationFn: (linkId: string) => api.delete(`/customer/campaign-buyers/${linkId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-buyers", editCampaignRef.current?.id] });
-      setMessage({ type: "success", text: "Buyer unlinked" });
+      toast.success("Buyer unlinked");
     },
-    onError: (err: any) => setMessage({ type: "error", text: err.response?.data?.error || "Failed to unlink buyer" }),
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to unlink buyer"),
   });
 
   const campaigns = data?.campaigns || [];
@@ -139,6 +133,14 @@ export default function Campaigns() {
   const linkedBuyers = (campaignBuyers?.campaign_buyers || []).filter((cb: any) => cb.campaign_id === editCampaign?.id);
   const buyers = buyersData?.buyers || [];
   const linkedBuyerIds = linkedBuyers.map((cb: any) => cb.buyer_id);
+
+  const filtered = search
+    ? campaigns.filter((c: any) =>
+        c.name?.toLowerCase().includes(search.toLowerCase()) ||
+        c.description?.toLowerCase().includes(search.toLowerCase()) ||
+        c.useCase?.toLowerCase().includes(search.toLowerCase())
+      )
+    : campaigns;
 
   function openEdit(camp: any) {
     setEditCampaign(camp);
@@ -149,22 +151,21 @@ export default function Campaigns() {
 
   return (
     <div className="space-y-6">
-      {/* Toast */}
-      {message && (
-        <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-all ${
-          message.type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"
-        }`}>
-          {message.text}
-          <button onClick={() => setMessage(null)} className="ml-3 text-white/80 hover:text-white"><X className="w-4 h-4 inline" /></button>
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-800">Campaigns</h2>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors">
           <Plus className="w-4 h-4" /> Create Campaign
         </button>
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search campaigns..."
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1] outline-none"
+        />
       </div>
 
       {/* Create Modal */}
@@ -210,7 +211,6 @@ export default function Campaigns() {
             </div>
 
             <div className="space-y-5">
-              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
@@ -219,21 +219,18 @@ export default function Campaigns() {
                 </select>
               </div>
 
-              {/* Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Campaign Name</label>
                 <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" />
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]" rows={3} />
               </div>
 
-              {/* Use Case */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Use Case</label>
                 <input type="text" value={editForm.useCase} onChange={(e) => setEditForm({ ...editForm, useCase: e.target.value })}
@@ -247,7 +244,6 @@ export default function Campaigns() {
 
               <hr className="border-gray-200" />
 
-              {/* Analytics */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Analytics</h4>
                 <div className="grid grid-cols-4 gap-3">
@@ -272,7 +268,6 @@ export default function Campaigns() {
 
               <hr className="border-gray-200" />
 
-              {/* Assigned Numbers */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Phone className="w-4 h-4" /> Assigned Numbers</h4>
                 <div className="space-y-2 mb-3">
@@ -305,7 +300,6 @@ export default function Campaigns() {
 
               <hr className="border-gray-200" />
 
-              {/* Campaign Buyers */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Linked Buyers</h4>
                 {linkedBuyers.length === 0 ? (
@@ -343,7 +337,6 @@ export default function Campaigns() {
 
               <hr className="border-gray-200" />
 
-              {/* Delete */}
               <button onClick={() => setDeleteConfirm(editCampaign.id)}
                 className="flex items-center justify-center gap-2 w-full py-2.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors">
                 <Trash2 className="w-4 h-4" /> Delete Campaign
@@ -370,42 +363,70 @@ export default function Campaigns() {
         </div>
       )}
 
-      {/* Campaign Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {campaigns.map((camp: any) => (
-          <div key={camp.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:border-[#1985A1]/30 transition-colors cursor-pointer group"
-            onClick={() => openEdit(camp)}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4 text-[#1985A1]" />
-                <h3 className="font-semibold text-gray-800">{camp.name}</h3>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[camp.status] || "bg-gray-100 text-gray-600"}`}>
-                  {camp.status.replace(/_/g, " ")}
-                </span>
-                <button onClick={(e) => { e.stopPropagation(); openEdit(camp); }}
-                  className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(camp.id); }}
-                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            {camp.description && <p className="text-sm text-gray-500 mb-3 line-clamp-2">{camp.description}</p>}
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <span>{camp.useCase || "No use case"}</span>
-              <span>{formatDate(camp.createdAt)}</span>
-            </div>
-          </div>
-        ))}
-        {campaigns.length === 0 && (
-          <div className="col-span-full text-center py-12 text-sm text-gray-400">
-            No campaigns yet. Create your first campaign to get started.
-          </div>
-        )}
+      {/* Campaigns Table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-200 bg-gray-50">
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Campaign</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Description</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Buyer</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">DID Numbers</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Created</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((camp: any) => (
+              <tr key={camp.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => openEdit(camp)}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="w-4 h-4 text-[#1985A1]" />
+                    <span className="text-sm font-medium text-gray-800">{camp.name}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-1 rounded-full ${statusColors[camp.status] || "bg-gray-100 text-gray-600"}`}>
+                    {camp.status?.replace(/_/g, " ")}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate">{camp.description || "-"}</td>
+                <td className="px-4 py-3">
+                  {camp.buyerNames ? (
+                    <div className="text-sm text-gray-800">
+                      <div>{camp.buyerNames}</div>
+                      {camp.buyerPhones && <div className="text-xs text-gray-500">{camp.buyerPhones}</div>}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600">{camp.didNumbers || "-"}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{formatDate(camp.createdAt)}</td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(camp)}
+                      className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg transition-colors">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setDeleteConfirm(camp.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No campaigns found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

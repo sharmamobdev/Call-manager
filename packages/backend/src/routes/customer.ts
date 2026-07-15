@@ -2,6 +2,20 @@ import { Router, Request, Response } from "express";
 import { db } from "../db/index.js";
 import { authenticate, authorize } from "../middleware/auth.js";
 import { signalwire } from "../services/signalwire.js";
+import { parsePhoneNumber } from "libphonenumber-js";
+
+function normalizePhone(phone: string | undefined | null): string | null {
+  if (!phone) return null;
+  try {
+    const num = parsePhoneNumber(phone, "US");
+    if (num && num.isValid()) return num.format("E.164");
+  } catch { /* ignore */ }
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length === 10) return `+1${cleaned}`;
+  if (cleaned.length === 11 && cleaned.startsWith("1")) return `+${cleaned}`;
+  if (cleaned.startsWith("+")) return phone;
+  return phone || null;
+}
 
 const router = Router();
 router.use(authenticate);
@@ -31,7 +45,7 @@ router.get("/customer/available-numbers", async (req: Request, res: Response) =>
   try {
     const areaCode = req.query.area_code as string | undefined;
     const tollFree = req.query.toll_free === "true";
-    const data = await signalwire.searchAvailable(areaCode, tollFree);
+    const data = await signalwire.searchAvailable(areaCode, tollFree, 20);
     const numbers = (data.available_phone_numbers || []).map((n: any) => ({
       phone_number: n.phone_number,
       price: parseFloat(n.cost || "1.00"),
@@ -68,6 +82,17 @@ router.post("/customer/numbers/buy", async (req: Request, res: Response) => {
 
     db.prepare(`INSERT INTO numbers (id, e164, friendly_name, organization_id, is_active, is_toll_free, monthly_rental, signalwire_sid, purchased_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)`).run(id, e164, friendly_name || e164, req.user!.organizationId, price, sid, Date.now(), Date.now(), Date.now());
+
+    // Auto-configure webhook on SignalWire so calls route to our backend
+    const baseUrl = `https://${req.get("host")}`.replace(/\/+$/, "");
+    await signalwire.updateNumber(sid, {
+      VoiceUrl: `${baseUrl}/v1/webhook/voice/${sid}`,
+      VoiceMethod: "POST",
+      StatusCallback: `${baseUrl}/v1/webhook/status`,
+      StatusCallbackMethod: "POST",
+      SmsUrl: `${baseUrl}/v1/webhook/sms/${sid}`,
+      SmsMethod: "POST",
+    }).catch((err: any) => console.error("Auto-configure webhook failed:", err.message));
 
     return res.json({ number: { id, e164, monthlyRental: price, signalwireSid: sid } });
   } catch (err: any) {
@@ -123,7 +148,7 @@ router.post("/customer/numbers/:id/configure-webhook", async (req: Request, res:
     if (!number) return res.status(404).json({ error: "Number not found" });
     if (!number.signalwire_sid) return res.status(400).json({ error: "Number has no SignalWire SID — sync it first" });
 
-    const baseUrl = (req.body.base_url || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
+    const baseUrl = (req.body.base_url || `https://${req.get("host")}`).replace(/\/+$/, "");
 
     await signalwire.updateNumber(number.signalwire_sid, {
       VoiceUrl: `${baseUrl}/v1/webhook/voice/${number.signalwire_sid}`,
@@ -142,7 +167,19 @@ router.post("/customer/numbers/:id/configure-webhook", async (req: Request, res:
 });
 
 router.get("/customer/campaigns", (req: Request, res: Response) => {
-  const rows = db.prepare("SELECT * FROM campaigns WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
+  const rows = db.prepare(`
+    SELECT c.*,
+      GROUP_CONCAT(DISTINCT b.name) as buyer_names,
+      GROUP_CONCAT(DISTINCT b.phone) as buyer_phones,
+      GROUP_CONCAT(DISTINCT n.e164) as did_numbers
+    FROM campaigns c
+    LEFT JOIN campaign_buyers cb ON cb.campaign_id = c.id
+    LEFT JOIN buyers b ON b.id = cb.buyer_id
+    LEFT JOIN numbers n ON n.campaign_id = c.id
+    WHERE c.organization_id = ?
+    GROUP BY c.id
+    ORDER BY c.created_at DESC
+  `).all(req.user!.organizationId) as any[];
   const campaigns = rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -152,6 +189,9 @@ router.get("/customer/campaigns", (req: Request, res: Response) => {
     sampleMessages: r.sample_messages ? JSON.parse(r.sample_messages) : [],
     monthlyVolume: r.monthly_volume,
     isActive: !!r.is_active,
+    buyerNames: r.buyer_names || null,
+    buyerPhones: r.buyer_phones || null,
+    didNumbers: r.did_numbers || null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
@@ -208,7 +248,36 @@ router.delete("/customer/campaigns/:id", (req: Request, res: Response) => {
 });
 
 router.get("/customer/campaigns/:id/analytics", (req: Request, res: Response) => {
-  return res.json({ totalCalls: 0, answeredCalls: 0, avgDuration: 0, totalCost: "0", daily: [] });
+  const orgId = req.user!.organizationId;
+  const campId = req.params.id;
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) as total_calls,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as answered_calls,
+      COALESCE(AVG(duration), 0) as avg_duration,
+      COALESCE(SUM(cost), 0) as total_cost
+    FROM cdrs
+    WHERE organization_id = ?
+      AND to_number IN (SELECT e164 FROM numbers WHERE campaign_id = ?)
+  `).get(orgId, campId) as any;
+
+  const dailyRows = db.prepare(`
+    SELECT strftime('%Y-%m-%d', call_date / 1000, 'unixepoch') as date,
+           COUNT(*) as count,
+           COALESCE(SUM(cost), 0) as cost
+    FROM cdrs
+    WHERE organization_id = ?
+      AND to_number IN (SELECT e164 FROM numbers WHERE campaign_id = ?)
+    GROUP BY date ORDER BY date DESC LIMIT 30
+  `).all(orgId, campId) as any[];
+
+  return res.json({
+    totalCalls: row?.total_calls || 0,
+    answeredCalls: row?.answered_calls || 0,
+    avgDuration: Math.round(row?.avg_duration || 0),
+    totalCost: (row?.total_cost || 0).toFixed(2),
+    daily: dailyRows || [],
+  });
 });
 
 function mapBuyer(r: any) {
@@ -225,8 +294,14 @@ function mapBuyer(r: any) {
 }
 
 router.get("/customer/buyers", (req: Request, res: Response) => {
-  const rows = db.prepare("SELECT * FROM buyers WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
-  return res.json({ buyers: rows.map(mapBuyer) });
+  const rows = db.prepare(`
+    SELECT b.*,
+      (SELECT COUNT(*) FROM campaign_buyers cb WHERE cb.buyer_id = b.id) as campaign_count
+    FROM buyers b
+    WHERE b.organization_id = ?
+    ORDER BY b.created_at DESC
+  `).all(req.user!.organizationId) as any[];
+  return res.json({ buyers: rows.map((r) => ({ ...mapBuyer(r), campaignCount: r.campaign_count || 0 })) });
 });
 
 router.get("/customer/buyers/:id", (req: Request, res: Response) => {
@@ -252,11 +327,12 @@ router.get("/customer/buyers/:id", (req: Request, res: Response) => {
 
 router.post("/customer/buyers", (req: Request, res: Response) => {
   const { name, email, phone, description } = req.body;
+  const normalizedPhone = normalizePhone(phone);
   const id = crypto.randomUUID();
   const now = Date.now();
   db.prepare(`INSERT INTO buyers (id, name, email, phone, description, organization_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, phone || null, description || null, req.user!.organizationId, now, now);
-  return res.json({ buyer: { id, name, email, phone } });
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, name, email || null, normalizedPhone, description || null, req.user!.organizationId, now, now);
+  return res.json({ buyer: { id, name, email, phone: normalizedPhone } });
 });
 
 router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
@@ -265,8 +341,12 @@ router.patch("/customer/buyers/:id", (req: Request, res: Response) => {
   for (const [key, value] of Object.entries(req.body)) {
     const col = key.replace(/([A-Z])/g, "_$1").toLowerCase();
     if (value === undefined) continue;
+    if (col === "phone") {
+      params.push(normalizePhone(value as string));
+    } else {
+      params.push(value);
+    }
     sets.push(`${col} = ?`);
-    params.push(value);
   }
   if (!sets.length) return res.status(400).json({ error: "No fields to update" });
   sets.push("updated_at = ?");
@@ -282,13 +362,13 @@ router.delete("/customer/buyers/:id", (req: Request, res: Response) => {
   return res.json({ success: true });
 });
 
-router.get("/customer/campaign-buyers", (_req: Request, res: Response) => {
+router.get("/customer/campaign-buyers", (req: Request, res: Response) => {
   const list = db.prepare(`
     SELECT cb.*, c.name as campaign_name, b.name as buyer_name
     FROM campaign_buyers cb
-    JOIN campaigns c ON c.id = cb.campaign_id
-    JOIN buyers b ON b.id = cb.buyer_id
-  `).all();
+    JOIN campaigns c ON c.id = cb.campaign_id AND c.organization_id = ?
+    JOIN buyers b ON b.id = cb.buyer_id AND b.organization_id = ?
+  `).all(req.user!.organizationId, req.user!.organizationId);
   return res.json({ campaign_buyers: list });
 });
 
@@ -302,8 +382,8 @@ router.post("/customer/campaign-buyers", (req: Request, res: Response) => {
 });
 
 router.delete("/customer/campaign-buyers/:id", (req: Request, res: Response) => {
-  db.prepare("DELETE FROM campaign_buyers WHERE id = ?").run(req.params.id);
-  return res.json({ success: true });
+  const result = db.prepare("DELETE FROM campaign_buyers WHERE id = ? AND campaign_id IN (SELECT id FROM campaigns WHERE organization_id = ?)").run(req.params.id, req.user!.organizationId);
+  return res.json({ success: !!result.changes });
 });
 
 // Buyer Groups
@@ -341,6 +421,14 @@ router.post("/customer/buyer-groups", (req: Request, res: Response) => {
   return res.json({ buyer_group: { id, name: req.body.name } });
 });
 
+router.patch("/customer/buyer-groups/:id", (req: Request, res: Response) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: "Name is required" });
+  db.prepare("UPDATE buyer_groups SET name = ?, updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(name, Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
 router.delete("/customer/buyer-groups/:id", (req: Request, res: Response) => {
   db.prepare("DELETE FROM buyer_group_members WHERE group_id = ?").run(req.params.id);
   db.prepare("DELETE FROM buyer_groups WHERE id = ? AND organization_id = ?").run(req.params.id, req.user!.organizationId);
@@ -371,6 +459,91 @@ router.get("/customer/call-vendors", (req: Request, res: Response) => {
     updatedAt: r.updated_at,
   }));
   return res.json({ call_vendors: vendors });
+});
+
+// ── Campaign Routing Strategy ──
+router.patch("/customer/campaigns/:id/routing", (req: Request, res: Response) => {
+  const { strategy } = req.body;
+  if (!["sequential", "round_robin", "concurrent"].includes(strategy)) {
+    return res.status(400).json({ error: "Invalid strategy. Use: sequential, round_robin, concurrent" });
+  }
+  db.prepare("UPDATE campaigns SET routing_strategy = ?, updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(strategy, Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true, strategy });
+});
+
+// ── Blocklist ──
+router.get("/customer/blocklist", (req: Request, res: Response) => {
+  const list = db.prepare("SELECT * FROM blocklists WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
+  return res.json({ blocklist: list });
+});
+
+router.post("/customer/blocklist", (req: Request, res: Response) => {
+  const { type, value, reason } = req.body;
+  if (!["number", "prefix", "country"].includes(type)) {
+    return res.status(400).json({ error: "type must be number, prefix, or country" });
+  }
+  if (!value) return res.status(400).json({ error: "value is required" });
+  const id = crypto.randomUUID();
+  db.prepare("INSERT INTO blocklists (id, organization_id, type, value, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(id, req.user!.organizationId, type, value, reason || null, Date.now());
+  return res.json({ blocklist_entry: { id, type, value, reason } });
+});
+
+router.delete("/customer/blocklist/:id", (req: Request, res: Response) => {
+  db.prepare("DELETE FROM blocklists WHERE id = ? AND organization_id = ?").run(req.params.id, req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+// ── Fraud / Rate-limit Settings ──
+router.get("/customer/settings/fraud", (req: Request, res: Response) => {
+  const org = db.prepare("SELECT settings FROM organizations WHERE id = ?").get(req.user!.organizationId) as any;
+  const settings = org?.settings ? (() => { try { return JSON.parse(org.settings); } catch { return {}; } })() : {};
+  return res.json({
+    maxCallsPerMinute: settings.maxCallsPerMinute || 10,
+    maxCountriesPerHour: settings.maxCountriesPerHour || 3,
+    blockAnonymized: settings.blockAnonymized ?? true,
+    businessHoursOnly: settings.businessHoursOnly ?? false,
+    businessHoursStart: settings.businessHoursStart || "09:00",
+    businessHoursEnd: settings.businessHoursEnd || "17:00",
+    timezone: settings.timezone || "America/New_York",
+  });
+});
+
+router.patch("/customer/settings/fraud", (req: Request, res: Response) => {
+  const org = db.prepare("SELECT settings FROM organizations WHERE id = ?").get(req.user!.organizationId) as any;
+  const current = org?.settings ? (() => { try { return JSON.parse(org.settings); } catch { return {}; } })() : {};
+  const merged = { ...current, ...req.body };
+  db.prepare("UPDATE organizations SET settings = ? WHERE id = ?").run(JSON.stringify(merged), req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+// ── SMTP Settings ──
+router.get("/customer/organization/smtp", (req: Request, res: Response) => {
+  const org = db.prepare("SELECT settings FROM organizations WHERE id = ?").get(req.user!.organizationId) as any;
+  const s = org?.settings ? (() => { try { return JSON.parse(org.settings); } catch { return {}; } })() : {};
+  return res.json({ host: s.smtpHost || "", port: parseInt(s.smtpPort || "587"), user: s.smtpUser || "", fromEmail: s.smtpFrom || "" });
+});
+
+router.post("/customer/organization/smtp", (req: Request, res: Response) => {
+  const org = db.prepare("SELECT settings FROM organizations WHERE id = ?").get(req.user!.organizationId) as any;
+  const current = org?.settings ? (() => { try { return JSON.parse(org.settings); } catch { return {}; } })() : {};
+  const merged = { ...current, smtpHost: req.body.host, smtpPort: String(req.body.port || "587"), smtpUser: req.body.user || "", smtpPass: req.body.pass || current.smtpPass, smtpFrom: req.body.fromEmail };
+  db.prepare("UPDATE organizations SET settings = ? WHERE id = ?").run(JSON.stringify(merged), req.user!.organizationId);
+  return res.json({ success: true });
+});
+
+// ── Number Call Rate ──
+router.patch("/customer/numbers/:id/rate", (req: Request, res: Response) => {
+  const { ratePerMinute } = req.body;
+  if (ratePerMinute === undefined) return res.status(400).json({ error: "ratePerMinute is required" });
+  const number = db.prepare("SELECT * FROM numbers WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId) as any;
+  if (!number) return res.status(404).json({ error: "Number not found" });
+  const ivrConfig = number.ivr_config ? (() => { try { return JSON.parse(number.ivr_config); } catch { return {}; } })() : {};
+  ivrConfig.ratePerMinute = parseFloat(ratePerMinute);
+  db.prepare("UPDATE numbers SET ivr_config = ?, updated_at = ? WHERE id = ? AND organization_id = ?")
+    .run(JSON.stringify(ivrConfig), Date.now(), req.params.id, req.user!.organizationId);
+  return res.json({ success: true, ratePerMinute: parseFloat(ratePerMinute) });
 });
 
 export default router;

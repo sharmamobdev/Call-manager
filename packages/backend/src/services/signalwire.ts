@@ -8,19 +8,26 @@ const auth = Buffer.from(`${ACCOUNT_SID}:${AUTH_TOKEN}`).toString("base64");
 
 async function swFetch(path: string, options: RequestInit = {}) {
   const url = `${BASE}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`SignalWire error ${res.status}: ${error}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`SignalWire error ${res.status}: ${error}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
 }
 
 function toQueryString(params: Record<string, string | number | boolean | undefined>): string {
@@ -62,10 +69,10 @@ export const signalwire = {
   },
 
   // ── List owned numbers ──
-  async listNumbers(args?: { pageSize?: number; page?: number }) {
+  async listNumbers(args?: { pageSize?: number; pageToken?: string }) {
     const params: Record<string, string | number> = {};
     if (args?.pageSize) params.PageSize = args.pageSize;
-    if (args?.page) params.Page = args.page;
+    if (args?.pageToken) params.PageToken = args.pageToken;
     return swFetch(`/IncomingPhoneNumbers.json${toQueryString(params)}`);
   },
 
@@ -115,7 +122,7 @@ export const signalwire = {
   async getCalls(args?: { pageSize?: number; page?: number }) {
     const params: Record<string, string | number> = {};
     if (args?.pageSize) params.PageSize = args.pageSize;
-    if (args?.page) params.Page = args.page;
+    if (args?.page) params.Page = Math.max(0, args.page - 1);
     return swFetch(`/Calls.json${toQueryString(params)}`);
   },
 

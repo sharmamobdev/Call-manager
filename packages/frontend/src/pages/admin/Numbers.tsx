@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../lib/api";
 import { formatDate, formatCurrency } from "../../lib/utils";
-import { Phone, RefreshCw, Search } from "lucide-react";
+import { Phone, RefreshCw, Search, Loader2 } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function AdminNumbers() {
   const queryClient = useQueryClient();
@@ -15,7 +16,14 @@ export default function AdminNumbers() {
 
   const syncMutation = useMutation({
     mutationFn: () => api.post("/admin/numbers/sync"),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "numbers"] }),
+    onSuccess: (res) => {
+      const { synced, updated, total } = res.data;
+      toast.success(`Synced ${synced} new number${synced !== 1 ? "s" : ""} from SignalWire (${total} total)`);
+      queryClient.invalidateQueries({ queryKey: ["admin", "numbers"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || "Failed to sync numbers");
+    },
   });
 
   const numbers = data?.numbers || [];
@@ -32,8 +40,12 @@ export default function AdminNumbers() {
           disabled={syncMutation.isPending}
           className="flex items-center gap-2 px-4 py-2 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors disabled:opacity-50"
         >
-          <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-          {syncMutation.isPending ? "Syncing..." : "Sync from SignalWire"}
+          {syncMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+          {syncMutation.isPending ? "Syncing..." : "Sync Numbers"}
         </button>
       </div>
 

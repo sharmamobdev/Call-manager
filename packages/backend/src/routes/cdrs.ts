@@ -78,6 +78,10 @@ const SORT_COLUMNS: Record<string, string> = {
   duration: "duration",
   cost: "cost",
   status: "status",
+  buyerName: "buyer_name",
+  campaignName: "campaign_name",
+  reason: "reason",
+  routingAttempt: "routing_attempt",
 };
 
 function mapCdr(r: any) {
@@ -88,12 +92,16 @@ function mapCdr(r: any) {
     fromNumber: r.from_number,
     toNumber: r.to_number,
     buyerNumber: r.buyer_number,
+    buyerName: r.buyer_name,
+    campaignName: r.campaign_name,
     direction: r.direction,
     duration: r.duration,
     billDuration: r.bill_duration,
     cost: r.cost,
     rate: r.rate,
     status: r.status,
+    reason: r.reason,
+    routingAttempt: r.routing_attempt,
     recordingUrl: r.recording_url,
     recordingDuration: r.recording_duration,
     answeredAt: r.answered_at,

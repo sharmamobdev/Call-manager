@@ -45,12 +45,12 @@ async function seed() {
 async function main() {
   try {
     await seed();
-    if (process.env.RAILWAY_SERVICE_NAME || !process.listeners("request").length) {
+    if (process.env.RAILWAY_SERVICE_NAME || !(process as any).listeners("request").length) {
       process.exit(0);
     }
   } catch (err) {
     console.error("Seed failed:", err);
-    if (process.env.RAILWAY_SERVICE_NAME || !process.listeners("request").length) {
+    if (process.env.RAILWAY_SERVICE_NAME || !(process as any).listeners("request").length) {
       process.exit(1);
     }
   }

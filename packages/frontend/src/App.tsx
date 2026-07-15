@@ -5,11 +5,11 @@ import SignIn from "./pages/SignIn";
 import Dashboard from "./pages/Dashboard";
 import Numbers from "./pages/Numbers";
 import Campaigns from "./pages/Campaigns";
-import Cdrs from "./pages/Cdrs";
+import CallLogs from "./pages/CallLogs";
+import LiveCalls from "./pages/LiveCalls";
 import Billing from "./pages/Billing";
 import Reports from "./pages/Reports";
 import Buyers from "./pages/Buyers";
-import CallVendors from "./pages/CallVendors";
 import Settings from "./pages/Settings";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminNumbers from "./pages/admin/Numbers";
@@ -37,11 +37,11 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="numbers" element={<Numbers />} />
         <Route path="campaigns" element={<Campaigns />} />
-        <Route path="cdrs" element={<Cdrs />} />
+        <Route path="live-calls" element={<LiveCalls />} />
+        <Route path="call-logs" element={<CallLogs />} />
         <Route path="billing" element={<Billing />} />
         <Route path="reports" element={<Reports />} />
         <Route path="buyers" element={<Buyers />} />
-        <Route path="vendors" element={<CallVendors />} />
         <Route path="settings" element={<Settings />} />
         <Route path="admin" element={<AdminDashboard />} />
         <Route path="admin/numbers" element={<AdminNumbers />} />

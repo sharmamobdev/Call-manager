@@ -1,7 +1,23 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../lib/api";
-import { formatCurrency, formatDateTime } from "../lib/utils";
-import { Phone, DollarSign, Activity, Receipt, PhoneCall } from "lucide-react";
+import { formatDate, formatCurrency, formatDuration, formatDateTime } from "../lib/utils";
+import { Phone, PhoneCall, TrendingUp, DollarSign, Receipt, Users, Activity, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { useLiveCalls, LiveCall } from "../hooks/useLiveCalls";
+
+function LiveCallRow({ call }: { call: LiveCall }) {
+  const elapsed = useElapsed(call.callDate);
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-yellow-100 last:border-0">
+      <div>
+        <p className="text-sm font-medium text-gray-700">{call.fromNumber} → {call.toNumber}</p>
+        <p className="text-xs text-gray-400">{formatDateTime(call.callDate)} · {formatDuration(elapsed)}</p>
+      </div>
+      <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 animate-pulse">{call.status}</span>
+    </div>
+  );
+}
 
 function StatCard({ title, value, icon: Icon, color }: any) {
   return (
@@ -17,24 +33,29 @@ function StatCard({ title, value, icon: Icon, color }: any) {
   );
 }
 
+function useElapsed(start: number | undefined): number {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!start) return;
+    setElapsed(Math.floor((Date.now() - start) / 1000));
+    const interval = setInterval(() => setElapsed((prev) => prev + 1), 1000);
+    return () => clearInterval(interval);
+  }, [start]);
+  return elapsed;
+}
+
 export default function Dashboard() {
   const { data: summary } = useQuery({
     queryKey: ["billing-summary"],
     queryFn: () => api.get("/customer/billing/summary").then((r) => r.data),
   });
 
-  const { data: cdrs } = useQuery({
-    queryKey: ["recent-cdrs"],
-    queryFn: () => api.get("/customer/cdrs", { params: { pageSize: 5 } }).then((r) => r.data),
+  const { data: callData } = useQuery({
+    queryKey: ["recent-calls"],
+    queryFn: () => api.get("/customer/signalwire-calls", { params: { pageSize: 5 } }).then((r) => r.data),
   });
 
-  const { data: liveData } = useQuery({
-    queryKey: ["dashboard-live-calls"],
-    queryFn: () => api.get("/customer/live-calls").then((r) => r.data),
-    refetchInterval: 10000,
-  });
-
-  const liveCalls = liveData?.calls || [];
+  const liveCalls = useLiveCalls();
 
   return (
     <div className="space-y-6">
@@ -51,21 +72,21 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Calls</h3>
           <div className="space-y-3">
-            {(cdrs?.cdrs || []).slice(0, 5).map((cdr: any) => (
-              <div key={cdr.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+            {(callData?.calls || []).slice(0, 5).map((call: any) => (
+              <div key={call.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                 <div>
                   <p className="text-sm font-medium text-gray-700">
-                    {cdr.fromNumber} → {cdr.toNumber}
+                    {call.fromNumber} → {call.toNumber}
                   </p>
-                  <p className="text-xs text-gray-400">{formatDateTime(cdr.callDate)}</p>
+                  <p className="text-xs text-gray-400">{formatDateTime(call.startTime)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-700">{cdr.duration}s</p>
-                  <p className="text-xs text-gray-400">{formatCurrency(cdr.cost)}</p>
+                  <p className="text-sm font-medium text-gray-700">{call.duration}s</p>
+                  <p className="text-xs text-gray-400">{call.cost != null ? formatCurrency(String(call.cost)) : "-"}</p>
                 </div>
               </div>
             ))}
-            {(!cdrs?.cdrs || cdrs.cdrs.length === 0) && (
+            {(!callData?.calls || callData.calls.length === 0) && (
               <p className="text-sm text-gray-400">No recent calls</p>
             )}
           </div>
@@ -77,7 +98,7 @@ export default function Dashboard() {
             {[
               { label: "Buy Number", href: "/numbers" },
               { label: "Create Campaign", href: "/campaigns" },
-              { label: "View CDRs", href: "/cdrs" },
+              { label: "Call Logs", href: "/call-logs" },
               { label: "View Invoices", href: "/billing" },
             ].map((action) => (
               <a
@@ -99,18 +120,25 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold text-gray-800">Live Calls ({liveCalls.length})</h3>
           </div>
           <div className="space-y-3">
-            {liveCalls.slice(0, 5).map((call: any) => (
-              <div key={call.id} className="flex items-center justify-between py-2 border-b border-yellow-100 last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">
-                    {call.fromNumber} → {call.toNumber}
-                  </p>
-                  <p className="text-xs text-gray-400">{formatDateTime(call.callDate)}</p>
-                </div>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 animate-pulse">{call.status}</span>
-              </div>
+            {liveCalls.slice(0, 5).map((call) => (
+              <LiveCallRow key={call.id} call={call} />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Concurrency Chart */}
+      {liveCalls.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Active Call Concurrency</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={Array.from({ length: 10 }, (_, i) => ({ time: `${-10 + i * 1}s`, count: liveCalls.length }))}>
+              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Area type="monotone" dataKey="count" stroke="#1985A1" fill="#1985A1" fillOpacity={0.2} strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>

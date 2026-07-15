@@ -36,12 +36,30 @@ router.get("/admin/numbers", (req: Request, res: Response) => {
 
 router.post("/admin/numbers/sync", async (_req: Request, res: Response) => {
   try {
-    const data = await signalwire.listNumbers();
-    const swNumbers: any[] = data.incoming_phone_numbers || [];
+    let allNumbers: any[] = [];
+    let pageToken: string | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const data = await signalwire.listNumbers({ pageSize: 100, pageToken });
+      const swNumbers: any[] = data.incoming_phone_numbers || [];
+      allNumbers = allNumbers.concat(swNumbers);
+      pageToken = data.next_page_token || undefined;
+      hasMore = !!pageToken && swNumbers.length > 0;
+    }
+
     let synced = 0;
-    for (const sw of swNumbers) {
-      const existing = db.prepare("SELECT id FROM numbers WHERE e164 = ?").get(sw.phone_number);
-      if (existing) continue;
+    let updated = 0;
+    for (const sw of allNumbers) {
+      const existing = db.prepare("SELECT id, organization_id FROM numbers WHERE e164 = ?").get(sw.phone_number) as any;
+      if (existing) {
+        if (!existing.organization_id) {
+          db.prepare("UPDATE numbers SET organization_id = ?, signalwire_sid = ?, friendly_name = COALESCE(?, friendly_name), updated_at = ? WHERE e164 = ?")
+            .run(_req.user!.organizationId, sw.sid, sw.friendly_name || null, Date.now(), sw.phone_number);
+          updated++;
+        }
+        continue;
+      }
       const id = crypto.randomUUID();
       const orgId = _req.user!.organizationId;
       db.prepare(`INSERT INTO numbers (id, e164, friendly_name, organization_id, is_active, monthly_rental, signalwire_sid, purchased_at, created_at, updated_at)
@@ -49,7 +67,7 @@ router.post("/admin/numbers/sync", async (_req: Request, res: Response) => {
         .run(id, sw.phone_number, sw.friendly_name || null, orgId, parseFloat(sw.cost || "1.00"), sw.sid, Date.now(), Date.now(), Date.now());
       synced++;
     }
-    return res.json({ synced, total: swNumbers.length });
+    return res.json({ synced, updated, total: allNumbers.length });
   } catch (err: any) {
     console.error("Sync numbers error:", err.message);
     return res.status(502).json({ error: `Failed to sync numbers: ${err.message}` });

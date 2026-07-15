@@ -73,26 +73,58 @@ router.post("/customer/daily-reports/settings", (req: Request, res: Response) =>
   return res.json({ setting: { id } });
 });
 
-router.post("/customer/daily-reports/generate-now", (_req: Request, res: Response) => {
-  return res.json({ success: true, message: "Report generation queued" });
+function generateCsvContent(orgId: string): string {
+  const cdrs = db.prepare("SELECT * FROM cdrs WHERE organization_id = ? ORDER BY call_date DESC LIMIT 10000").all(orgId) as any[];
+  const header = "CallSID,From,To,Direction,Duration,BillDuration,Cost,Rate,Status,Date\n";
+  const rows = cdrs.map((c: any) =>
+    `${c.call_sid || ""},${c.from_number},${c.to_number},${c.direction},${c.duration},${c.bill_duration},${c.cost},${c.rate},${c.status},${c.call_date}`
+  ).join("\n");
+  return header + rows;
+}
+
+router.post("/customer/daily-reports/generate-now", (req: Request, res: Response) => {
+  const orgId = req.user!.organizationId;
+  const csv = generateCsvContent(orgId);
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  // Store CSV content as the file_url (inline)
+  db.prepare("INSERT INTO generated_reports (id, organization_id, report_type, file_name, file_url, file_size, is_ready, generated_at, created_at, updated_at) VALUES (?, ?, 'campaign-summary', ?, ?, ?, 1, ?, ?, ?)")
+    .run(id, orgId, `report-${now}.csv`, csv, Buffer.byteLength(csv, "utf8"), now, now, now);
+  return res.json({ success: true, report: { id, fileName: `report-${now}.csv` } });
 });
 
 router.get("/customer/generated-reports", (req: Request, res: Response) => {
-  const reports = db.prepare("SELECT * FROM generated_reports WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId);
+  const rows = db.prepare("SELECT * FROM generated_reports WHERE organization_id = ? ORDER BY created_at DESC").all(req.user!.organizationId) as any[];
+  const reports = rows.map((r) => ({
+    id: r.id,
+    reportType: r.report_type,
+    fileName: r.file_name,
+    fileSize: r.file_size,
+    isReady: !!r.is_ready,
+    generatedAt: r.generated_at,
+    createdAt: r.created_at,
+  }));
   return res.json({ reports });
 });
 
 router.post("/customer/generated-reports/create", (req: Request, res: Response) => {
   const { reportType, parameters } = req.body;
-  const id = crypto.randomUUID();
+  const orgId = req.user!.organizationId;
   const now = Date.now();
-  db.prepare(`INSERT INTO generated_reports (id, organization_id, report_type, file_name, file_url, parameters, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.user!.organizationId, reportType || "custom", `report-${now}.csv`, "", JSON.stringify(parameters || {}), now, now);
-  return res.json({ report: { id } });
+  const id = crypto.randomUUID();
+  const csv = generateCsvContent(orgId);
+  db.prepare(`INSERT INTO generated_reports (id, organization_id, report_type, file_name, file_url, file_size, parameters, is_ready, generated_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, '{}', 1, ?, ?, ?)`)
+    .run(id, orgId, reportType || "custom", `report-${now}.csv`, csv, Buffer.byteLength(csv, "utf8"), now, now, now);
+  return res.json({ report: { id, fileName: `report-${now}.csv` } });
 });
 
-router.get("/customer/generated-reports/:id/download", (_req: Request, res: Response) => {
-  return res.status(501).json({ error: "Download not implemented" });
+router.get("/customer/generated-reports/:id/download", (req: Request, res: Response) => {
+  const report = db.prepare("SELECT * FROM generated_reports WHERE id = ? AND organization_id = ?").get(req.params.id, req.user!.organizationId) as any;
+  if (!report) return res.status(404).json({ error: "Report not found" });
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${report.file_name}"`);
+  return res.send(report.file_url || generateCsvContent(req.user!.organizationId));
 });
 
 export default router;

@@ -1,10 +1,14 @@
-import initSqlJs, { Database as SqlJsDatabase, SqlJsStatic } from "sql.js";
+import initSqlJs from "sql.js";
 import fs from "fs";
 import path from "path";
 
+type SqlJsDatabase = any;
+type SqlJsStatic = any;
+const initSqlJsTyped = initSqlJs as any;
+
 class Statement {
-  private sql: string;
-  private db: SqlJsDatabase;
+  sql: string;
+  db: SqlJsDatabase;
   constructor(sql: string, db: SqlJsDatabase) {
     this.sql = sql;
     this.db = db;
@@ -36,7 +40,7 @@ let dbInstance: SqlJsDatabase | null = null;
 let dbPath: string = "";
 
 export async function initDatabase(filePath: string) {
-  SQL = await initSqlJs();
+  SQL = await initSqlJsTyped();
   dbPath = filePath;
   if (fs.existsSync(filePath)) {
     const buffer = fs.readFileSync(filePath);

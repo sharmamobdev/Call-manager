@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../lib/api";
-import { Users, Plus, X, Edit2, Trash2, Phone, Mail, ChevronRight, Save, Link, Unlink, FolderPlus, UserPlus, UserMinus } from "lucide-react";
+import { Users, Plus, X, Edit2, Trash2, Phone, ChevronRight, Save, Link, Unlink, FolderPlus, UserPlus, UserMinus, Check, Pencil, Search } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function Buyers() {
   const queryClient = useQueryClient();
@@ -10,11 +11,13 @@ export default function Buyers() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", description: "" });
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", description: "" });
+  const [search, setSearch] = useState("");
 
-  // Groups state
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [groupDetail, setGroupDetail] = useState<any>(null);
   const [groupForm, setGroupForm] = useState({ name: "" });
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState("");
 
   const { data } = useQuery({
     queryKey: ["buyers"],
@@ -45,47 +48,70 @@ export default function Buyers() {
 
   const createMutation = useMutation({
     mutationFn: () => api.post("/customer/buyers", form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyers"] }); setShowCreate(false); setForm({ name: "", email: "", phone: "", description: "" }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["buyers"] });
+      setShowCreate(false);
+      setForm({ name: "", email: "", phone: "", description: "" });
+      toast.success("Buyer added");
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to add buyer"),
   });
 
   const updateMutation = useMutation({
     mutationFn: () => api.patch(`/customer/buyers/${editBuyer.id}`, editForm),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyers"] }); queryClient.invalidateQueries({ queryKey: ["buyer", editBuyer.id] }); setEditBuyer(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["buyers"] });
+      queryClient.invalidateQueries({ queryKey: ["buyer", editBuyer.id] });
+      setEditBuyer(null);
+      toast.success("Buyer saved");
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to save buyer"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/customer/buyers/${deleteConfirm}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyers"] }); setDeleteConfirm(null); setEditBuyer(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["buyers"] });
+      setDeleteConfirm(null);
+      setEditBuyer(null);
+      toast.success("Buyer deleted");
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || "Failed to delete buyer"),
   });
 
   const linkCampaignMutation = useMutation({
     mutationFn: (campaignId: string) => api.post("/customer/campaign-buyers", { campaign_id: campaignId, buyer_id: editBuyer.id }),
-    onSuccess: () => { refetchBuyer(); queryClient.invalidateQueries({ queryKey: ["campaign-buyers"] }); },
+    onSuccess: () => { refetchBuyer(); queryClient.invalidateQueries({ queryKey: ["campaign-buyers"] }); toast.success("Campaign linked"); },
   });
 
   const unlinkCampaignMutation = useMutation({
     mutationFn: (linkId: string) => api.delete(`/customer/campaign-buyers/${linkId}`),
-    onSuccess: () => { refetchBuyer(); queryClient.invalidateQueries({ queryKey: ["campaign-buyers"] }); },
+    onSuccess: () => { refetchBuyer(); queryClient.invalidateQueries({ queryKey: ["campaign-buyers"] }); toast.success("Campaign unlinked"); },
   });
 
   const createGroupMutation = useMutation({
     mutationFn: () => api.post("/customer/buyer-groups", groupForm),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); setGroupForm({ name: "" }); setShowGroupModal(false); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); setGroupForm({ name: "" }); setShowGroupModal(false); toast.success("Group created"); },
+  });
+
+  const renameGroupMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/customer/buyer-groups/${id}`, { name }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); setEditingGroupId(null); toast.success("Group renamed"); },
   });
 
   const deleteGroupMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/customer/buyer-groups/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); setGroupDetail(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); setGroupDetail(null); toast.success("Group deleted"); },
   });
 
   const addMemberMutation = useMutation({
     mutationFn: (buyerId: string) => api.post(`/customer/buyer-groups/${groupDetail.id}/members`, { buyer_id: buyerId }),
-    onSuccess: () => { refetchGroup(); queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); },
+    onSuccess: () => { refetchGroup(); queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); toast.success("Member added"); },
   });
 
   const removeMemberMutation = useMutation({
     mutationFn: (membershipId: string) => api.delete(`/customer/buyer-groups/${groupDetail.id}/members/${membershipId}`),
-    onSuccess: () => { refetchGroup(); queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); },
+    onSuccess: () => { refetchGroup(); queryClient.invalidateQueries({ queryKey: ["buyer-groups"] }); toast.success("Member removed"); },
   });
 
   const buyers = data?.buyers || [];
@@ -95,6 +121,14 @@ export default function Buyers() {
   const groupedGroups = buyerDetail?.groups || [];
   const groupMembers = groupDetailData?.members || [];
   const linkedCampaignIds = groupedCampaigns.map((c: any) => c.campaign_id);
+
+  const filtered = search
+    ? buyers.filter((b: any) =>
+        b.name?.toLowerCase().includes(search.toLowerCase()) ||
+        b.email?.toLowerCase().includes(search.toLowerCase()) ||
+        b.phone?.includes(search)
+      )
+    : buyers;
 
   function openEdit(buyer: any) {
     setEditBuyer(buyer);
@@ -109,6 +143,15 @@ export default function Buyers() {
           className="flex items-center gap-2 px-4 py-2 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors">
           <Plus className="w-4 h-4" /> Add Buyer
         </button>
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search buyers..."
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1] outline-none"
+        />
       </div>
 
       {/* Create Modal */}
@@ -185,7 +228,6 @@ export default function Buyers() {
 
               <hr className="border-gray-200" />
 
-              {/* Linked Campaigns */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Link className="w-4 h-4" /> Linked Campaigns</h4>
                 {groupedCampaigns.length === 0 ? (
@@ -222,7 +264,6 @@ export default function Buyers() {
 
               <hr className="border-gray-200" />
 
-              {/* Groups */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Groups</h4>
                 {groupedGroups.length === 0 ? (
@@ -266,35 +307,60 @@ export default function Buyers() {
         </div>
       )}
 
-      {/* Buyer Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {buyers.map((buyer: any) => (
-          <div key={buyer.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:border-[#1985A1]/30 transition-colors cursor-pointer group"
-            onClick={() => openEdit(buyer)}>
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#1985A1]" />
-                <h3 className="font-semibold text-gray-800">{buyer.name}</h3>
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                <button onClick={(e) => { e.stopPropagation(); openEdit(buyer); }} className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg">
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(buyer.id); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1 ml-1">
-              {buyer.email && <p className="text-xs text-gray-500 flex items-center gap-1.5"><Mail className="w-3 h-3" /> {buyer.email}</p>}
-              {buyer.phone && <p className="text-xs text-gray-500 flex items-center gap-1.5"><Phone className="w-3 h-3" /> {buyer.phone}</p>}
-            </div>
-            {buyer.description && <p className="text-xs text-gray-400 mt-2">{buyer.description}</p>}
-          </div>
-        ))}
-        {buyers.length === 0 && (
-          <div className="col-span-full text-center py-12 text-sm text-gray-400">No buyers yet</div>
-        )}
+      {/* Buyers Table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-200 bg-gray-50">
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Buyer</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Phone</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Description</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Campaigns</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((buyer: any) => (
+              <tr key={buyer.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => openEdit(buyer)}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-[#1985A1]" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-800">{buyer.name}</span>
+                      {buyer.email && <div className="text-xs text-gray-500">{buyer.email}</div>}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600">{buyer.phone || "-"}</td>
+                <td className="px-4 py-3 text-sm text-gray-600 max-w-[200px] truncate">{buyer.description || "-"}</td>
+                <td className="px-4 py-3">
+                  <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                    {buyer.campaignCount || 0}
+                  </span>
+                </td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(buyer)}
+                      className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg transition-colors">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setDeleteConfirm(buyer.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No buyers found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Buyer Groups Section */}
@@ -309,13 +375,33 @@ export default function Buyers() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {groups.map((g: any) => (
             <div key={g.id} className="border border-gray-200 rounded-lg p-4 hover:border-[#1985A1]/30 transition-colors cursor-pointer"
-              onClick={() => setGroupDetail(g)}>
+              onClick={() => { if (editingGroupId !== g.id) setGroupDetail(g); }}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-[#1985A1]" />
-                  <span className="text-sm font-medium text-gray-800">{g.name}</span>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Users className="w-4 h-4 text-[#1985A1] shrink-0" />
+                  {editingGroupId === g.id ? (
+                    <div className="flex items-center gap-1 flex-1">
+                      <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm outline-none focus:ring-2 focus:ring-[#1985A1]/20 focus:border-[#1985A1]"
+                        onClick={(e) => e.stopPropagation()} autoFocus />
+                      <button onClick={(e) => { e.stopPropagation(); renameGroupMutation.mutate({ id: g.id, name: editingGroupName }); }}
+                        className="p-1 text-green-600 hover:bg-green-50 rounded"><Check className="w-4 h-4" /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setEditingGroupId(null); }}
+                        className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-medium text-gray-800 truncate">{g.name}</span>
+                  )}
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
+                <div className="flex items-center gap-1 shrink-0">
+                  {editingGroupId !== g.id && (
+                    <button onClick={(e) => { e.stopPropagation(); setEditingGroupId(g.id); setEditingGroupName(g.name); }}
+                      className="p-1.5 text-gray-400 hover:text-[#1985A1] hover:bg-gray-100 rounded-lg">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </div>
               </div>
             </div>
           ))}
@@ -356,7 +442,6 @@ export default function Buyers() {
             </div>
 
             <div className="space-y-4">
-              {/* Members */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2"><Users className="w-4 h-4" /> Members ({groupMembers.length})</h4>
                 <div className="space-y-1.5 mb-3">

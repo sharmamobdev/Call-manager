@@ -1,9 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../lib/api";
 import { formatCurrency, formatDate } from "../lib/utils";
-import { BarChart3, Download } from "lucide-react";
+import { BarChart3, Download, RefreshCw, FileText } from "lucide-react";
 
 export default function Reports() {
+  const queryClient = useQueryClient();
+
   const { data: campaignSummary } = useQuery({
     queryKey: ["campaign-summary"],
     queryFn: () => api.get("/customer/reports/campaign-summary").then((r) => r.data),
@@ -17,6 +19,16 @@ export default function Reports() {
   const { data: reportSettings } = useQuery({
     queryKey: ["report-settings"],
     queryFn: () => api.get("/customer/daily-reports/settings").then((r) => r.data),
+  });
+
+  const { data: generatedData } = useQuery({
+    queryKey: ["generated-reports"],
+    queryFn: () => api.get("/customer/generated-reports").then((r) => r.data),
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => api.post("/customer/daily-reports/generate-now"),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["generated-reports"] }); },
   });
 
   return (
@@ -98,6 +110,37 @@ export default function Reports() {
           ))}
           {(!reportSettings?.settings || reportSettings.settings.length === 0) && (
             <p className="text-sm text-gray-400">No report schedules configured</p>
+          )}
+        </div>
+      </div>
+
+      {/* Generated Reports */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-800">Generated Reports</h3>
+          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#1985A1] text-white rounded-lg text-sm font-medium hover:bg-[#146a81] transition-colors disabled:opacity-50">
+            <RefreshCw className="w-4 h-4" /> {generateMutation.isPending ? "Generating..." : "Generate Now"}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {(generatedData?.reports || []).map((r: any) => (
+            <div key={r.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <FileText className="w-4 h-4 text-gray-400" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">{r.fileName}</p>
+                  <p className="text-xs text-gray-400">{r.reportType} · {formatDate(r.createdAt)}{r.fileSize ? ` · ${(r.fileSize / 1024).toFixed(1)} KB` : ""}</p>
+                </div>
+              </div>
+              <button onClick={() => { api.get(`/customer/generated-reports/${r.id}/download`, { responseType: "blob" }).then((resp) => { const url = URL.createObjectURL(resp.data); const a = document.createElement("a"); a.href = url; a.download = r.fileName || "report.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }); }}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#1985A1] hover:bg-[#1985A1]/10 rounded-lg transition-colors">
+                <Download className="w-3.5 h-3.5" /> Download
+              </button>
+            </div>
+          ))}
+          {(!generatedData?.reports || generatedData.reports.length === 0) && (
+            <p className="text-sm text-gray-400">No generated reports yet. Click "Generate Now" to create one.</p>
           )}
         </div>
       </div>

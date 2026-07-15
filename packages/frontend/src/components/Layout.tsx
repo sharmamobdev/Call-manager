@@ -2,8 +2,8 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../lib/auth";
 import { cn } from "../lib/utils";
 import {
-  LayoutDashboard, Phone, Megaphone, PhoneCall, Receipt,
-  BarChart3, Users, Building2, Settings, LogOut, Menu, X, Satellite,
+  LayoutDashboard, Phone, Megaphone, PhoneCall, Receipt, Radio,
+  BarChart3, Users, Settings, LogOut, Menu, X, Satellite,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -12,8 +12,8 @@ const navItems = [
   { href: "/numbers", label: "Numbers", icon: Phone },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/buyers", label: "Buyers", icon: Users },
-  { href: "/vendors", label: "Call Vendors", icon: Building2 },
-  { href: "/cdrs", label: "CDRs", icon: PhoneCall },
+  { href: "/live-calls", label: "Live Calls", icon: Radio },
+  { href: "/call-logs", label: "Call Logs", icon: PhoneCall },
   { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },

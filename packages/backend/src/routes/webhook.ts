@@ -24,12 +24,17 @@ router.post("/webhook/voice/dial-result", (req: Request, res: Response) => {
   const campaignId = req.query.campaignId as string;
   const orgId = req.query.orgId as string;
   const status = dialCallStatus?.toLowerCase() || "no-answer";
+  const reason = dialCallStatus || "unknown";
+  const routingAttempt = currentBuyerIndex + 1;
 
   console.log(`[Webhook] Dial result — CallSid: ${callSid}, Status: ${status}, AnsweredBy: ${answeredBy || "-"}, Duration: ${dialCallDuration}s, BuyerIndex: ${currentBuyerIndex}`);
 
   // Treat machine detection (voicemail) as no-answer so we retry the next buyer
   const isMachine = answeredBy === "machine_start" || answeredBy === "machine_end";
   const resolvedStatus = isMachine ? "no-answer" : status;
+
+  // Compute answered_at: set when call is first answered
+  const answeredAt = resolvedStatus === "completed" ? Date.now() : null;
 
   // Update CDR via callSid or fallback to cdrId
   let updated = false;
@@ -38,16 +43,20 @@ router.post("/webhook/voice/dial-result", (req: Request, res: Response) => {
     const existing = db.prepare("SELECT * FROM cdrs WHERE call_sid = ?").get(callSid) as any;
     if (existing) {
       const durationNum = parseInt(dialCallDuration || "0");
-      db.prepare("UPDATE cdrs SET status = ?, duration = ?, bill_duration = ?, updated_at = ? WHERE id = ?")
-        .run(resolvedStatus, durationNum, durationNum, Date.now(), existing.id);
+      db.prepare(`UPDATE cdrs SET status = ?, reason = ?, routing_attempt = ?, 
+        answered_at = COALESCE(?, answered_at), ended_at = ?,
+        duration = ?, bill_duration = ?, updated_at = ? WHERE id = ?`)
+        .run(resolvedStatus, reason, routingAttempt, answeredAt, Date.now(), durationNum, durationNum, Date.now(), existing.id);
       resolvedOrgId = existing.organization_id;
       updated = true;
     }
   }
   if (!updated && cdrId) {
     const durationNum = parseInt(dialCallDuration || "0");
-    db.prepare("UPDATE cdrs SET status = ?, duration = ?, bill_duration = ?, updated_at = ? WHERE id = ?")
-      .run(resolvedStatus, durationNum, durationNum, Date.now(), cdrId);
+    db.prepare(`UPDATE cdrs SET status = ?, reason = ?, routing_attempt = ?,
+      answered_at = COALESCE(?, answered_at), ended_at = ?,
+      duration = ?, bill_duration = ?, updated_at = ? WHERE id = ?`)
+      .run(resolvedStatus, reason, routingAttempt, answeredAt, Date.now(), durationNum, durationNum, Date.now(), cdrId);
     if (!resolvedOrgId) {
       const cdr = db.prepare("SELECT organization_id FROM cdrs WHERE id = ?").get(cdrId) as any;
       if (cdr) resolvedOrgId = cdr.organization_id;
@@ -150,18 +159,6 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
   const campaignId = number.campaign_id;
   const now = Date.now();
 
-  // Create CDR
-  const cdrId = uid();
-  db.prepare(`INSERT INTO cdrs (id, organization_id, call_sid, from_number, to_number, direction, status, call_date, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'inbound', 'ringing', ?, ?, ?)`)
-    .run(cdrId, orgId, callSid || null, from, to, now, now, now);
-
-  broadcastCdrEvent({
-    type: "call-start",
-    organizationId: orgId,
-    cdr: { id: cdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: "ringing", duration: 0, cost: 0, callDate: now },
-  });
-
   // Find campaign + routing strategy
   let campaign: any = null;
   if (campaignId) {
@@ -180,6 +177,21 @@ router.all("/webhook/voice/:numberId", (req: Request, res: Response) => {
       ORDER BY cb.routing_order ASC, b.name ASC
     `).all(campaignId) as any[];
   }
+
+  const campaignName = campaign?.name || null;
+  const firstBuyerName = buyers[0]?.name || null;
+
+  // Create CDR
+  const cdrId = uid();
+  db.prepare(`INSERT INTO cdrs (id, organization_id, call_sid, from_number, to_number, direction, status, call_date, created_at, updated_at, buyer_name, campaign_name)
+    VALUES (?, ?, ?, ?, ?, 'inbound', 'ringing', ?, ?, ?, ?, ?)`)
+    .run(cdrId, orgId, callSid || null, from, to, now, now, now, firstBuyerName, campaignName);
+
+  broadcastCdrEvent({
+    type: "call-start",
+    organizationId: orgId,
+    cdr: { id: cdrId, callSid, fromNumber: from || "", toNumber: to || "", direction: "inbound", status: "ringing", duration: 0, cost: 0, callDate: now },
+  });
 
   const strategy = campaign?.routing_strategy || "sequential";
 
@@ -255,8 +267,11 @@ router.post("/webhook/status", (req: Request, res: Response) => {
       const ratePerSecond = ratePerMinute / 60;
       const cost = +(dur * ratePerSecond).toFixed(6);
 
-      db.prepare("UPDATE cdrs SET status = ?, duration = ?, bill_duration = ?, cost = ?, rate = ?, recording_url = COALESCE(?, recording_url), recording_duration = CASE WHEN ? > 0 THEN ? ELSE recording_duration END, updated_at = ? WHERE id = ?")
-        .run(status, dur, dur, cost, ratePerSecond, recordingUrl, recordingDuration, recordingDuration, Date.now(), existing.id);
+      db.prepare(`UPDATE cdrs SET status = ?, duration = ?, bill_duration = ?, cost = ?, rate = ?, 
+        recording_url = COALESCE(?, recording_url), 
+        recording_duration = CASE WHEN ? > 0 THEN ? ELSE recording_duration END,
+        ended_at = ?, updated_at = ? WHERE id = ?`)
+        .run(status, dur, dur, cost, ratePerSecond, recordingUrl, recordingDuration, recordingDuration, Date.now(), Date.now(), existing.id);
 
       broadcastCdrEvent({
         type: status === "completed" ? "call-end" : "call-update",

@@ -145,6 +145,7 @@ export function createTables() {
       call_sid TEXT,
       from_number TEXT NOT NULL,
       to_number TEXT NOT NULL,
+      buyer_number TEXT,
       direction TEXT NOT NULL,
       duration INTEGER NOT NULL DEFAULT 0,
       bill_duration INTEGER NOT NULL DEFAULT 0,
@@ -241,6 +242,25 @@ export function createTables() {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id);
+
+    CREATE TABLE IF NOT EXISTS blocklists (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL REFERENCES organizations(id),
+      type TEXT NOT NULL,
+      value TEXT NOT NULL,
+      reason TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_blocklist_org ON blocklists(organization_id);
+
+    CREATE TABLE IF NOT EXISTS call_rate_limits (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL REFERENCES organizations(id),
+      from_number TEXT NOT NULL,
+      call_count INTEGER DEFAULT 1,
+      window_start INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_org ON call_rate_limits(organization_id);
   `;
 
   exec(createStmts);
@@ -249,6 +269,13 @@ export function createTables() {
   try { db.prepare("ALTER TABLE numbers ADD COLUMN signalwire_sid TEXT").run(); } catch (_) {}
   try { db.prepare("ALTER TABLE numbers ADD COLUMN assigned_at INTEGER").run(); } catch (_) {}
   try { db.prepare("ALTER TABLE buyers ADD COLUMN phone TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE campaigns ADD COLUMN routing_strategy TEXT DEFAULT 'sequential'").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE campaign_buyers ADD COLUMN routing_order INTEGER DEFAULT 0").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE cdrs ADD COLUMN buyer_number TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE cdrs ADD COLUMN reason TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE cdrs ADD COLUMN routing_attempt INTEGER").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE cdrs ADD COLUMN buyer_name TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE cdrs ADD COLUMN campaign_name TEXT").run(); } catch (_) {}
 
   saveDatabase();
   console.log("Database tables created successfully");
