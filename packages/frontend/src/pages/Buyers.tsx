@@ -366,7 +366,7 @@ export default function Buyers() {
                     </span>
                   </td>
                   <td className="px-3 py-2 text-sm text-slate-600">{buyer.dailyCap > 0 ? buyer.dailyCap : "Unlimited"}</td>
-                  <td className="px-3 py-2 text-sm text-slate-600">{buyer.todayCC || 0}</td>
+                  <td className="px-3 py-2 text-sm text-slate-600">{buyer.todayCC || 0}/{buyer.maxConcurrent > 0 ? buyer.maxConcurrent : "∞"}</td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <button onClick={() => openEdit(buyer)}
