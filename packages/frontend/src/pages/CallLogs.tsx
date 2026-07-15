@@ -20,6 +20,9 @@ export default function CallLogs() {
 
   const cdrs = data?.cdrs || [];
 
+  const token = localStorage.getItem("auth_token") || "";
+  const recordingUrl = (cdrId: string) => `/v1/recordings/${cdrId}?token=${encodeURIComponent(token)}`;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -158,14 +161,14 @@ export default function CallLogs() {
             <audio
               controls
               autoPlay
-              src={`/v1/customer/recordings/${playingRecording.cdrId}`}
+              src={recordingUrl(playingRecording.cdrId)}
               className="w-full"
             >
               Your browser does not support the audio element.
             </audio>
             <div className="mt-4 flex justify-end">
               <a
-                href={`/v1/customer/recordings/${playingRecording.cdrId}`}
+                href={recordingUrl(playingRecording.cdrId)}
                 download
                 className="flex items-center gap-2 px-4 py-2 text-sm text-[#1985A1] hover:bg-[#1985A1]/10 rounded-lg transition-colors"
               >
