@@ -75,7 +75,7 @@ export default function CallLogs() {
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Call Start</th>
                 <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Call End</th>
-                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Call ID</th>
+                <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Caller ID</th>
                 <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">DID</th>
                 <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Buyer Name</th>
                 <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Buyer Number</th>
@@ -101,7 +101,7 @@ export default function CallLogs() {
                   <tr key={cdr.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-3 py-3 text-sm text-gray-500 whitespace-nowrap">{formatDateTime(cdr.callDate)}</td>
                     <td className="px-3 py-3 text-sm text-gray-500 whitespace-nowrap">{cdr.endedAt ? formatDateTime(cdr.endedAt) : "-"}</td>
-                    <td className="px-3 py-3 text-xs font-mono text-gray-400 max-w-[120px] truncate" title={cdr.callSid}>{cdr.callSid || "-"}</td>
+                    <td className="px-3 py-3 text-sm font-medium text-gray-800">{cdr.fromNumber || "-"}</td>
                     <td className="px-3 py-3 text-sm text-gray-700">{cdr.toNumber}</td>
                     <td className="px-3 py-3 text-sm text-gray-700">{cdr.buyerName || "-"}</td>
                     <td className="px-3 py-3 text-sm text-gray-700">{cdr.buyerNumber || "-"}</td>
