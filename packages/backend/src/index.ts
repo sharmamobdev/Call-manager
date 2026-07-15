@@ -10,10 +10,11 @@ import authRoutes from "./routes/auth.js";
 import organizationRoutes from "./routes/organizations.js";
 import customerRoutes from "./routes/customer.js";
 import billingRoutes from "./routes/billing.js";
-import cdrRoutes from "./routes/cdrs.js";
+import cdrRoutes, { recordingRouter } from "./routes/cdrs.js";
 import reportRoutes from "./routes/reports.js";
 import adminRoutes from "./routes/admin/index.js";
 import webhookRoutes from "./routes/webhook.js";
+import realtimeRoutes from "./routes/realtime.js";
 
 const app = express();
 
@@ -34,6 +35,9 @@ app.get("/v1/health", (_req, res) => {
 // so SignalWire callbacks don't hit the authenticate middleware
 app.use("/v1", webhookRoutes);
 
+// Recording proxy uses JWT in query string (no auth header — for <audio>/<a> tags)
+app.use("/v1", recordingRouter);
+
 app.use("/v1", authRoutes);
 app.use("/v1", customerRoutes);
 app.use("/v1", billingRoutes);
@@ -41,6 +45,7 @@ app.use("/v1", cdrRoutes);
 app.use("/v1", reportRoutes);
 app.use("/v1", adminRoutes);
 app.use("/v1", organizationRoutes);
+app.use("/v1", realtimeRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -5,10 +5,10 @@ import { signalwire } from "../services/signalwire.js";
 import jwt from "jsonwebtoken";
 import { config } from "../config/index.js";
 
-const router = Router();
+// ── Public recording proxy (no auth middleware — token in query string) ──
+export const recordingRouter = Router();
 
-// ── Public recording proxy (token in query string for <audio>/<a> tags) ──
-router.get("/recordings/:cdrId", async (req: Request, res: Response) => {
+recordingRouter.get("/recordings/:cdrId", async (req: Request, res: Response) => {
   try {
     const token = req.query.token as string;
     if (!token) return res.status(401).json({ error: "Missing token" });
@@ -65,6 +65,8 @@ router.get("/recordings/:cdrId", async (req: Request, res: Response) => {
   }
 });
 
+// ── Authenticated CDR routes ──
+const router = Router();
 router.use(authenticate);
 
 // camelCase column map for sorting
