@@ -51,6 +51,16 @@ export default function Campaigns() {
     queryFn: () => api.get("/customer/buyers").then((r) => r.data),
   });
 
+  const { data: cdrsData } = useQuery({
+    queryKey: ["cdrs-campaign-caps"],
+    queryFn: () => api.get("/customer/cdrs?status=completed&pageSize=200").then((r) => r.data),
+  });
+
+  const { data: liveData } = useQuery({
+    queryKey: ["live-calls-campaign-caps"],
+    queryFn: () => api.get("/customer/live-calls").then((r) => r.data),
+  });
+
   const createMutation = useMutation({
     mutationFn: () => api.post("/customer/campaigns", form),
     onSuccess: () => {
@@ -127,11 +137,19 @@ export default function Campaigns() {
   const linkedBuyerIds = linkedBuyers.map((cb: any) => cb.buyer_id);
 
   const buyerByPhone = new Map(buyers.map((b: any) => [b.phone, b]));
+
+  const startOfDayMs = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+  const allCalls = [...(cdrsData?.cdrs || []), ...(liveData?.calls || [])];
+  const countByPhone = new Map<string, number>();
+  allCalls
+    .filter((c: any) => c.callDate >= startOfDayMs && c.buyerNumber)
+    .forEach((c: any) => countByPhone.set(c.buyerNumber, (countByPhone.get(c.buyerNumber) || 0) + 1));
+
   const enrichedCampaigns = campaigns.map((c: any) => {
-    if (c.totalMaxConcurrent) return c;
     const phones = (c.buyerPhones || "").split(",").filter(Boolean);
-    const totalMC = phones.reduce((sum: number, p: string) => sum + (buyerByPhone.get(p)?.maxConcurrent || 0), 0);
-    return { ...c, totalMaxConcurrent: totalMC };
+    const totalMC = c.totalMaxConcurrent || phones.reduce((sum: number, p: string) => sum + (buyerByPhone.get(p)?.maxConcurrent || 0), 0);
+    const todayCompleted = phones.reduce((sum: number, p: string) => sum + (countByPhone.get(p) || 0), 0);
+    return { ...c, totalMaxConcurrent: totalMC, todayCompleted };
   });
 
   const filtered = search
@@ -393,7 +411,7 @@ export default function Campaigns() {
                       {camp.status?.replace(/_/g, " ")}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-sm text-slate-600">{camp.totalCap > 0 ? camp.totalCap : "Unlimited"}</td>
+                  <td className="px-3 py-2 text-sm text-slate-600">{camp.todayCompleted || 0}/{camp.totalCap > 0 ? camp.totalCap : "∞"}</td>
                   <td className="px-3 py-2 text-sm text-slate-600">{camp.todayCC || 0}/{camp.totalMaxConcurrent > 0 ? camp.totalMaxConcurrent : "∞"}</td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
