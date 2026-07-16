@@ -49,7 +49,6 @@ export default function Campaigns() {
   const { data: buyersData } = useQuery({
     queryKey: ["buyers"],
     queryFn: () => api.get("/customer/buyers").then((r) => r.data),
-    enabled: !!editCampaign,
   });
 
   const createMutation = useMutation({
@@ -127,13 +126,21 @@ export default function Campaigns() {
   const buyers = buyersData?.buyers || [];
   const linkedBuyerIds = linkedBuyers.map((cb: any) => cb.buyer_id);
 
+  const buyerByPhone = new Map(buyers.map((b: any) => [b.phone, b]));
+  const enrichedCampaigns = campaigns.map((c: any) => {
+    if (c.totalMaxConcurrent) return c;
+    const phones = (c.buyerPhones || "").split(",").filter(Boolean);
+    const totalMC = phones.reduce((sum: number, p: string) => sum + (buyerByPhone.get(p)?.maxConcurrent || 0), 0);
+    return { ...c, totalMaxConcurrent: totalMC };
+  });
+
   const filtered = search
-    ? campaigns.filter((c: any) =>
+    ? enrichedCampaigns.filter((c: any) =>
         c.name?.toLowerCase().includes(search.toLowerCase()) ||
         c.description?.toLowerCase().includes(search.toLowerCase()) ||
         c.useCase?.toLowerCase().includes(search.toLowerCase())
       )
-    : campaigns;
+    : enrichedCampaigns;
 
   function openEdit(camp: any) {
     setEditCampaign(camp);
