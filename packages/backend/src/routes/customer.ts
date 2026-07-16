@@ -214,6 +214,17 @@ router.get("/customer/campaigns", (req: Request, res: Response) => {
       totalCap = totalCap > 0 ? Math.min(r.daily_cap, totalCap) : r.daily_cap;
     }
 
+    // Compute totalMaxConcurrent: sum of linked buyers' max_concurrent (>0 only)
+    let totalMaxConcurrent = 0;
+    if (r.buyer_phones) {
+      const phones = r.buyer_phones.split(",").filter(Boolean);
+      if (phones.length > 0) {
+        const placeholders = phones.map(() => "?").join(",");
+        const mcRow = db.prepare(`SELECT COALESCE(SUM(max_concurrent), 0) as mc FROM buyers WHERE phone IN (${placeholders}) AND max_concurrent > 0`).get(...phones) as any;
+        totalMaxConcurrent = mcRow?.mc || 0;
+      }
+    }
+
     return {
       id: r.id,
       name: r.name,
@@ -230,6 +241,7 @@ router.get("/customer/campaigns", (req: Request, res: Response) => {
       dailyCap: r.daily_cap || 0,
       todayCC,
       totalCap,
+      totalMaxConcurrent,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };

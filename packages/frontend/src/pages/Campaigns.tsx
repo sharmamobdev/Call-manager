@@ -387,7 +387,7 @@ export default function Campaigns() {
                     </span>
                   </td>
                   <td className="px-3 py-2 text-sm text-slate-600">{camp.totalCap > 0 ? camp.totalCap : "Unlimited"}</td>
-                  <td className="px-3 py-2 text-sm text-slate-600">{camp.todayCC || 0}</td>
+                  <td className="px-3 py-2 text-sm text-slate-600">{camp.todayCC || 0}/{camp.totalMaxConcurrent > 0 ? camp.totalMaxConcurrent : "∞"}</td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <button onClick={() => openEdit(camp)}
